@@ -98,13 +98,14 @@ class TerminalWriter:
         return wcswidth(self._current_line)
 
     def markup(self, text: str, **markup: bool) -> str:
-        for name in markup:
-            if name not in self._esctable:
-                raise ValueError(f"unknown markup: {name!r}")
+        # Optimize: batch-check keys for unknown markups before looping
+        unknown = set(markup) - self._esctable.keys()
+        if unknown:
+            raise ValueError(f"unknown markup: {next(iter(unknown))!r}")
         if self.hasmarkup:
             esc = [self._esctable[name] for name, on in markup.items() if on]
             if esc:
-                text = "".join("\x1b[%sm" % cod for cod in esc) + text + "\x1b[0m"
+                text = "".join(f"\x1b[{cod}m" for cod in esc) + text + "\x1b[0m"
         return text
 
     def sep(
