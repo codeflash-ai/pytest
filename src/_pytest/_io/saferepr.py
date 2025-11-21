@@ -1,3 +1,4 @@
+import functools
 import pprint
 import reprlib
 from typing import Optional
@@ -108,7 +109,7 @@ def saferepr(
     This function is a wrapper around the Repr/reprlib functionality of the
     stdlib.
     """
-    return SafeRepr(maxsize, use_ascii).repr(obj)
+    return _get_safe_repr(maxsize, use_ascii).repr(obj)
 
 
 def saferepr_unlimited(obj: object, use_ascii: bool = True) -> str:
@@ -128,3 +129,9 @@ def saferepr_unlimited(obj: object, use_ascii: bool = True) -> str:
         return repr(obj)
     except Exception as exc:
         return _format_repr_exception(exc, obj)
+
+
+@functools.lru_cache(maxsize=8)
+def _get_safe_repr(maxsize: Optional[int], use_ascii: bool) -> SafeRepr:
+    # No behavioral change; helper to cache SafeRepr instances.
+    return SafeRepr(maxsize, use_ascii)
