@@ -251,28 +251,37 @@ def reorder_items_atscope(
             item = items_deque.popleft()
             if item in items_done or item in no_argkey_group:
                 continue
-            argkeys = dict.fromkeys(
-                (k for k in scoped_argkeys_cache.get(item, []) if k not in ignore), None
-            )
-            if not argkeys:
+            # Reuse argkey list and filter only if ignore set not empty (very often empty)
+            cache_keys = scoped_argkeys_cache.get(item)
+            if not cache_keys:
                 no_argkey_group[item] = None
             else:
-                slicing_argkey, _ = argkeys.popitem()
-                # We don't have to remove relevant items from later in the
-                # deque because they'll just be ignored.
-                matching_items = [
-                    i for i in scoped_items_by_argkey[slicing_argkey] if i in items
-                ]
-                for i in reversed(matching_items):
-                    fix_cache_order(i, argkeys_cache, items_by_argkey)
-                    items_deque.appendleft(i)
-                break
+                if ignore:
+                    keys = [k for k in cache_keys if k not in ignore]
+                else:
+                    if len(cache_keys) == 0:
+                        no_argkey_group[item] = None
+                        continue
+                    keys = list(cache_keys)
+                if not keys:
+                    no_argkey_group[item] = None
+                else:
+                    # Always take the first available slicing_argkey deterministically
+                    slicing_argkey = keys[0]
+                    # Gather all matching items for slicing_argkey *that are present in items*
+                    matching_items = [
+                        i for i in scoped_items_by_argkey[slicing_argkey] if i in items
+                    ]
+                    for i in reversed(matching_items):
+                        # fix_cache_order is an external, side-effect function; must call as before
+                        fix_cache_order(i, argkeys_cache, items_by_argkey)
+                        items_deque.appendleft(i)
+                    break  # Found a slicing group, move to next pass
         if no_argkey_group:
             no_argkey_group = reorder_items_atscope(
                 no_argkey_group, argkeys_cache, items_by_argkey, scope.next_lower()
             )
-            for item in no_argkey_group:
-                items_done[item] = None
+            items_done.update(no_argkey_group)
         ignore.add(slicing_argkey)
     return items_done
 
@@ -291,7 +300,7 @@ class FuncFixtureInfo:
     these are not reflected here.
     """
 
-    __slots__ = ("argnames", "initialnames", "names_closure", "name2fixturedefs")
+    __slots__ = ("argnames", "initialnames", "name2fixturedefs", "names_closure")
 
     # Fixture names that the item requests directly by function parameters.
     argnames: Tuple[str, ...]
@@ -746,7 +755,9 @@ class SubRequest(FixtureRequest):
         if node is None and scope is Scope.Class:
             # Fallback to function item itself.
             node = self._pyfuncitem
-        assert node, f'Could not obtain a node for scope "{scope}" for function {self._pyfuncitem!r}'
+        assert node, (
+            f'Could not obtain a node for scope "{scope}" for function {self._pyfuncitem!r}'
+        )
         return node
 
     def _check_scope(
