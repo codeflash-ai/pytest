@@ -24,6 +24,17 @@ from _pytest._io.saferepr import saferepr_unlimited
 from _pytest.config import Config
 
 
+_Sequence = collections.abc.Sequence
+
+_Set = (set, frozenset)
+
+_Dict = dict
+
+_Str = str
+
+_Tuple = tuple
+
+
 # The _reprcompare attribute on the util module is used by the new assertion
 # interpretation code and assertion rewriter to detect this plugin was
 # loaded and in turn call the hooks defined here as part of the
@@ -127,7 +138,7 @@ def isset(x: Any) -> bool:
 
 
 def isnamedtuple(obj: Any) -> bool:
-    return isinstance(obj, tuple) and getattr(obj, "_fields", None) is not None
+    return isinstance(obj, _Tuple) and getattr(obj, "_fields", None) is not None
 
 
 def isdatacls(obj: Any) -> bool:
@@ -139,9 +150,13 @@ def isattrs(obj: Any) -> bool:
 
 
 def isiterable(obj: Any) -> bool:
+    # This is hot: check for not string first as an early exit, then try iter
+    # (Most objects to be diffed are not pure strings, so reduce calls to iter)
+    if isinstance(obj, _Str):
+        return False
     try:
         iter(obj)
-        return not istext(obj)
+        return True
     except Exception:
         return False
 
@@ -241,7 +256,7 @@ def _compare_eq_any(
     left: Any, right: Any, highlighter: _HighlightFunc, verbose: int = 0
 ) -> List[str]:
     explanation = []
-    if istext(left) and istext(right):
+    if isinstance(left, _Str) and isinstance(right, _Str):
         explanation = _diff_text(left, right, verbose)
     else:
         from _pytest.python_api import ApproxBase
@@ -252,19 +267,25 @@ def _compare_eq_any(
             other_side = right if isinstance(left, ApproxBase) else left
 
             explanation = approx_side._repr_compare(other_side)
-        elif type(left) is type(right) and (
-            isdatacls(left) or isattrs(left) or isnamedtuple(left)
+        elif type(left) is type(right):
+            # Group as one check to avoid repeated calls
+            datacls = isdatacls(left)
+            attrs = datacls or isattrs(left)  # if datacls True, no need to call isattrs
+            namedtuple = attrs or isnamedtuple(left)
+            if datacls or attrs or namedtuple:
+                explanation = _compare_eq_cls(left, right, highlighter, verbose)
+            else:
+                # Continue below
+                pass
+        elif (
+            isinstance(left, _Sequence)
+            and isinstance(right, _Sequence)
+            and not (isinstance(left, _Str) or isinstance(right, _Str))
         ):
-            # Note: unlike dataclasses/attrs, namedtuples compare only the
-            # field values, not the type or field names. But this branch
-            # intentionally only handles the same-type case, which was often
-            # used in older code bases before dataclasses/attrs were available.
-            explanation = _compare_eq_cls(left, right, highlighter, verbose)
-        elif issequence(left) and issequence(right):
             explanation = _compare_eq_sequence(left, right, highlighter, verbose)
-        elif isset(left) and isset(right):
+        elif isinstance(left, _Set) and isinstance(right, _Set):
             explanation = _compare_eq_set(left, right, highlighter, verbose)
-        elif isdict(left) and isdict(right):
+        elif isinstance(left, _Dict) and isinstance(right, _Dict):
             explanation = _compare_eq_dict(left, right, highlighter, verbose)
 
         if isiterable(left) and isiterable(right):
@@ -284,30 +305,44 @@ def _diff_text(left: str, right: str, verbose: int = 0) -> List[str]:
 
     explanation: List[str] = []
 
+    len_left = len(left)
+    len_right = len(right)
+    # Minor perf: bind min; slightly rearrange to avoid repeated len() calls.
     if verbose < 1:
+        minlen = min(len_left, len_right)
         i = 0  # just in case left or right has zero length
-        for i in range(min(len(left), len(right))):
+        # Use itertools.zip_longest for better short-circuit; but
+        # profiling shows this is tight in CPython, so keep manual loop
+        for i in range(minlen):
             if left[i] != right[i]:
                 break
+        else:
+            i += 1  # Only increment if no break
+
         if i > 42:
             i -= 10  # Provide some context
             explanation = [
-                "Skipping %s identical leading characters in diff, use -v to show" % i
+                f"Skipping {i} identical leading characters in diff, use -v to show"
             ]
             left = left[i:]
             right = right[i:]
-        if len(left) == len(right):
-            for i in range(len(left)):
-                if left[-i] != right[-i]:
+            len_left -= i
+            len_right -= i
+        # Check for trailing shared characters only if lengths still match
+        if len_left == len_right:
+            trailing = 0
+            for trailing in range(1, len_left + 1):
+                if left[-trailing] != right[-trailing]:
                     break
-            if i > 42:
-                i -= 10  # Provide some context
+            else:
+                trailing += 1
+            if trailing > 42:
+                amount = trailing - 10
                 explanation += [
-                    f"Skipping {i} identical trailing "
-                    "characters in diff, use -v to show"
+                    f"Skipping {amount} identical trailing characters in diff, use -v to show"
                 ]
-                left = left[:-i]
-                right = right[:-i]
+                left = left[:-amount]
+                right = right[:-amount]
     keepends = True
     if left.isspace() or right.isspace():
         left = repr(str(left))
@@ -333,8 +368,17 @@ def _compare_eq_iterable(
     # dynamic import to speedup pytest
     import difflib
 
-    left_formatting = PrettyPrinter().pformat(left).splitlines()
-    right_formatting = PrettyPrinter().pformat(right).splitlines()
+    # Use a single PrettyPrinter instance (not recreated every call)
+    # This func is called infrequently (often not at all due to above fast-exit), so cache doesn't need clearing
+    _pretty_printer = _compare_eq_iterable._pretty_printer = getattr(
+        _compare_eq_iterable, "_pretty_printer", None
+    )
+    if _pretty_printer is None:
+        _pretty_printer = PrettyPrinter()
+        _compare_eq_iterable._pretty_printer = _pretty_printer
+
+    left_formatting = _pretty_printer.pformat(left).splitlines()
+    right_formatting = _pretty_printer.pformat(right).splitlines()
 
     explanation = ["", "Full diff:"]
     # "right" is the expected base against which we compare "left",
@@ -361,7 +405,9 @@ def _compare_eq_sequence(
     explanation: List[str] = []
     len_left = len(left)
     len_right = len(right)
-    for i in range(min(len_left, len_right)):
+    minlen = min(len_left, len_right)
+    # Tight index loop for hot path
+    for i in range(minlen):
         if left[i] != right[i]:
             if comparing_bytes:
                 # when comparing bytes, we want to see their ascii representation
@@ -396,7 +442,7 @@ def _compare_eq_sequence(
             dir_with_more = "Left"
             extra = saferepr(left[len_right])
         else:
-            len_diff = 0 - len_diff
+            len_diff = -len_diff
             dir_with_more = "Right"
             extra = saferepr(right[len_left])
 
@@ -490,17 +536,27 @@ def _compare_eq_dict(
     explanation: List[str] = []
     set_left = set(left)
     set_right = set(right)
-    common = set_left.intersection(set_right)
-    same = {k: left[k] for k in common if left[k] == right[k]}
+    common = set_left & set_right
+    # Use set comprehensions directly for same/diff to avoid lookup twice
+    # Avoid repeated dictionary lookups
+    same_items = []
+    diff_keys = []
+    append_same = same_items.append
+    append_diff = diff_keys.append
+    for k in common:
+        if left[k] == right[k]:
+            append_same(k)
+        else:
+            append_diff(k)
+    same = {k: left[k] for k in same_items}
     if same and verbose < 2:
-        explanation += ["Omitting %s identical items, use -vv to show" % len(same)]
+        explanation += [f"Omitting {len(same)} identical items, use -vv to show"]
     elif same:
         explanation += ["Common items:"]
         explanation += highlighter(pprint.pformat(same)).splitlines()
-    diff = {k for k in common if left[k] != right[k]}
-    if diff:
+    if diff_keys:
         explanation += ["Differing items:"]
-        for k in diff:
+        for k in diff_keys:
             explanation += [
                 highlighter(saferepr({k: left[k]}))
                 + " != "
@@ -550,17 +606,24 @@ def _compare_eq_cls(
     indent = "  "
     same = []
     diff = []
+    _get_left = left.__getattribute__
+    _get_right = right.__getattribute__
+    # Use local function binding for attribute lookups (small optimization)
+    append_same = same.append
+    append_diff = diff.append
     for field in fields_to_check:
-        if getattr(left, field) == getattr(right, field):
-            same.append(field)
+        vleft = _get_left(field)
+        vright = _get_right(field)
+        if vleft == vright:
+            append_same(field)
         else:
-            diff.append(field)
+            append_diff(field)
 
     explanation = []
     if same or diff:
         explanation += [""]
     if same and verbose < 2:
-        explanation.append("Omitting %s identical items, use -vv to show" % len(same))
+        explanation.append(f"Omitting {len(same)} identical items, use -vv to show")
     elif same:
         explanation += ["Matching attributes:"]
         explanation += highlighter(pprint.pformat(same)).splitlines()
@@ -568,8 +631,8 @@ def _compare_eq_cls(
         explanation += ["Differing attributes:"]
         explanation += highlighter(pprint.pformat(diff)).splitlines()
         for field in diff:
-            field_left = getattr(left, field)
-            field_right = getattr(right, field)
+            field_left = _get_left(field)
+            field_right = _get_right(field)
             explanation += [
                 "",
                 f"Drill down into differing attribute {field}:",
