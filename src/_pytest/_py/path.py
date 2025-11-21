@@ -727,23 +727,40 @@ class LocalPath:
         strargs = [os.fspath(arg) for arg in args]
         strpath = self.strpath
         if abs:
-            newargs: list[str] = []
-            for arg in reversed(strargs):
+            # Process in reverse, break at first abs, build list forward efficiently
+            idx = None
+            for i, arg in enumerate(reversed(strargs)):
                 if isabs(arg):
+                    idx = len(strargs) - 1 - i
                     strpath = arg
-                    strargs = newargs
                     break
-                newargs.insert(0, arg)
-        # special case for when we have e.g. strpath == "/"
-        actual_sep = "" if strpath.endswith(sep) else sep
-        for arg in strargs:
-            arg = arg.strip(sep)
-            if iswin32:
+            if idx is not None:
+                strargs = strargs[idx + 1 :]
+        if strpath.endswith(sep):
+            actual_sep = ""
+        else:
+            actual_sep = sep
+        # Prepare: reduce .strip and .replace cost on long loop
+        is_win = iswin32
+        to_append = []
+        if is_win:
+            for arg in strargs:
+                arg = arg.strip(sep)
                 # allow unix style paths even on windows.
                 arg = arg.strip("/")
                 arg = arg.replace("/", sep)
-            strpath = strpath + actual_sep + arg
-            actual_sep = sep
+                if arg:
+                    to_append.append(arg)
+            # Fast string join: use separator explicitly for all
+            if to_append:
+                strpath = strpath + actual_sep + sep.join(to_append)
+        else:
+            for arg in strargs:
+                arg = arg.strip(sep)
+                if arg:
+                    to_append.append(arg)
+            if to_append:
+                strpath = strpath + actual_sep + sep.join(to_append)
         obj = object.__new__(self.__class__)
         obj.strpath = normpath(strpath)
         return obj
