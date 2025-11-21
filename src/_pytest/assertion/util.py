@@ -24,6 +24,13 @@ from _pytest._io.saferepr import saferepr_unlimited
 from _pytest.config import Config
 
 
+_ATTRS_ATTR = "__attrs_attrs__"
+
+_FIELDS = "_fields"
+
+_DATACLS_FIELDS = "__dataclass_fields__"
+
+
 # The _reprcompare attribute on the util module is used by the new assertion
 # interpretation code and assertion rewriter to detect this plugin was
 # loaded and in turn call the hooks defined here as part of the
@@ -127,15 +134,18 @@ def isset(x: Any) -> bool:
 
 
 def isnamedtuple(obj: Any) -> bool:
-    return isinstance(obj, tuple) and getattr(obj, "_fields", None) is not None
+    # Optimization: use hasattr for "_fields" check instead of getattr+None compare
+    return isinstance(obj, tuple) and hasattr(obj, _FIELDS)
 
 
 def isdatacls(obj: Any) -> bool:
-    return getattr(obj, "__dataclass_fields__", None) is not None
+    # Optimization: use hasattr for "__dataclass_fields__"
+    return hasattr(obj, _DATACLS_FIELDS)
 
 
 def isattrs(obj: Any) -> bool:
-    return getattr(obj, "__attrs_attrs__", None) is not None
+    # Optimization: use hasattr for "__attrs_attrs__"
+    return hasattr(obj, _ATTRS_ATTR)
 
 
 def isiterable(obj: Any) -> bool:
@@ -157,10 +167,13 @@ def has_default_eq(
     for dataclasses the default co_filename is <string>, for attrs class, the __eq__ should contain "attrs eq generated"
     """
     # inspired from https://github.com/willmcgugan/rich/blob/07d51ffc1aee6f16bd2e5a25b4e82850fb9ed778/rich/pretty.py#L68
-    if hasattr(obj.__eq__, "__code__") and hasattr(obj.__eq__.__code__, "co_filename"):
-        code_filename = obj.__eq__.__code__.co_filename
+    eq = getattr(obj, "__eq__", None)
+    code_obj = getattr(eq, "__code__", None)
+    if code_obj is not None and hasattr(code_obj, "co_filename"):
+        code_filename = code_obj.co_filename
 
-        if isattrs(obj):
+        # Shortcircuit isattrs path (still call isattrs once only)
+        if hasattr(obj, _ATTRS_ATTR):
             return "attrs generated eq" in code_filename
 
         return code_filename == "<string>"  # data class
@@ -246,20 +259,24 @@ def _compare_eq_any(
     else:
         from _pytest.python_api import ApproxBase
 
+        # Perf: try to minimize type-checks and redundant calls
+        left_type = type(left)
+        right_type = type(right)
+        # ApproxBase checks
         if isinstance(left, ApproxBase) or isinstance(right, ApproxBase):
             # Although the common order should be obtained == expected, this ensures both ways
             approx_side = left if isinstance(left, ApproxBase) else right
             other_side = right if isinstance(left, ApproxBase) else left
 
             explanation = approx_side._repr_compare(other_side)
-        elif type(left) is type(right) and (
-            isdatacls(left) or isattrs(left) or isnamedtuple(left)
-        ):
-            # Note: unlike dataclasses/attrs, namedtuples compare only the
-            # field values, not the type or field names. But this branch
-            # intentionally only handles the same-type case, which was often
-            # used in older code bases before dataclasses/attrs were available.
-            explanation = _compare_eq_cls(left, right, highlighter, verbose)
+        # Inline the old logic for class-type comparisons, but call helpers just once
+        elif left_type is right_type:
+            # Avoid repeating costly class checks if one fails
+            _isd = isdatacls(left)
+            if _isd or isattrs(left):
+                explanation = _compare_eq_cls(left, right, highlighter, verbose)
+            elif isnamedtuple(left):
+                explanation = _compare_eq_cls(left, right, highlighter, verbose)
         elif issequence(left) and issequence(right):
             explanation = _compare_eq_sequence(left, right, highlighter, verbose)
         elif isset(left) and isset(right):
@@ -538,10 +555,13 @@ def _compare_eq_cls(
         import dataclasses
 
         all_fields = dataclasses.fields(left)
-        fields_to_check = [info.name for info in all_fields if info.compare]
+        # Optimization: list-comp to tuple-comp to avoid intermediate list for maybe large fields
+        fields_to_check = tuple(info.name for info in all_fields if info.compare)
     elif isattrs(left):
         all_fields = left.__attrs_attrs__
-        fields_to_check = [field.name for field in all_fields if getattr(field, "eq")]
+        fields_to_check = tuple(
+            field.name for field in all_fields if getattr(field, "eq")
+        )
     elif isnamedtuple(left):
         fields_to_check = left._fields
     else:
@@ -550,37 +570,47 @@ def _compare_eq_cls(
     indent = "  "
     same = []
     diff = []
+
+    # Optimization: Use local var lookups, hoist getattr and reuse attribute values to cut lookup cost
+    left_get = left.__getattribute__ if hasattr(left, "__getattribute__") else getattr
+    right_get = (
+        right.__getattribute__ if hasattr(right, "__getattribute__") else getattr
+    )
+
+    # Use C fast loop variant for tight for loop
+    append_same = same.append
+    append_diff = diff.append
     for field in fields_to_check:
-        if getattr(left, field) == getattr(right, field):
-            same.append(field)
+        lval = left_get(field)
+        rval = right_get(field)
+        if lval == rval:
+            append_same(field)
         else:
-            diff.append(field)
+            append_diff(field)
 
     explanation = []
     if same or diff:
-        explanation += [""]
+        explanation.append("")
     if same and verbose < 2:
         explanation.append("Omitting %s identical items, use -vv to show" % len(same))
     elif same:
-        explanation += ["Matching attributes:"]
+        explanation.append("Matching attributes:")
         explanation += highlighter(pprint.pformat(same)).splitlines()
     if diff:
-        explanation += ["Differing attributes:"]
+        explanation.append("Differing attributes:")
         explanation += highlighter(pprint.pformat(diff)).splitlines()
         for field in diff:
-            field_left = getattr(left, field)
-            field_right = getattr(right, field)
+            field_left = left_get(field)
+            field_right = right_get(field)
             explanation += [
                 "",
                 f"Drill down into differing attribute {field}:",
                 f"{indent}{field}: {highlighter(repr(field_left))} != {highlighter(repr(field_right))}",
             ]
-            explanation += [
-                indent + line
-                for line in _compare_eq_any(
-                    field_left, field_right, highlighter, verbose
-                )
-            ]
+            # Perf: build lines with list-comp and extend only at once
+            sub_lines = _compare_eq_any(field_left, field_right, highlighter, verbose)
+            explanation += [indent + line for line in sub_lines]
+
     return explanation
 
 
