@@ -291,7 +291,7 @@ class FuncFixtureInfo:
     these are not reflected here.
     """
 
-    __slots__ = ("argnames", "initialnames", "names_closure", "name2fixturedefs")
+    __slots__ = ("argnames", "initialnames", "name2fixturedefs", "names_closure")
 
     # Fixture names that the item requests directly by function parameters.
     argnames: Tuple[str, ...]
@@ -746,7 +746,9 @@ class SubRequest(FixtureRequest):
         if node is None and scope is Scope.Class:
             # Fallback to function item itself.
             node = self._pyfuncitem
-        assert node, f'Could not obtain a node for scope "{scope}" for function {self._pyfuncitem!r}'
+        assert node, (
+            f'Could not obtain a node for scope "{scope}" for function {self._pyfuncitem!r}'
+        )
         return node
 
     def _check_scope(
@@ -924,11 +926,11 @@ def _eval_scope_callable(
         # Type ignored because there is no typing mechanism to specify
         # keyword arguments, currently.
         result = scope_callable(fixture_name=fixture_name, config=config)  # type: ignore[call-arg]
-    except Exception as e:
+    except Exception:
         raise TypeError(
             f"Error evaluating {scope_callable} while defining fixture '{fixture_name}'.\n"
             "Expected a function with the signature (*, fixture_name, config)"
-        ) from e
+        ) from None
     if not isinstance(result, str):
         fail(
             f"Expected {scope_callable} to return a 'str' while defining fixture '{fixture_name}', but it returned:\n"
