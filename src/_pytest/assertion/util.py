@@ -490,42 +490,51 @@ def _compare_eq_dict(
     explanation: List[str] = []
     set_left = set(left)
     set_right = set(right)
-    common = set_left.intersection(set_right)
-    same = {k: left[k] for k in common if left[k] == right[k]}
+    common = set_left & set_right
+
+    # Build dicts/sets just once to avoid repeated computation.
+    same = {}
+    diff = set()
+    for k in common:
+        left_v = left[k]
+        right_v = right[k]
+        if left_v == right_v:
+            same[k] = left_v
+        else:
+            diff.add(k)
     if same and verbose < 2:
-        explanation += ["Omitting %s identical items, use -vv to show" % len(same)]
+        explanation.append("Omitting %s identical items, use -vv to show" % len(same))
     elif same:
-        explanation += ["Common items:"]
-        explanation += highlighter(pprint.pformat(same)).splitlines()
-    diff = {k for k in common if left[k] != right[k]}
+        explanation.append("Common items:")
+        explanation.extend(highlighter(pprint.pformat(same)).splitlines())
+
     if diff:
-        explanation += ["Differing items:"]
+        explanation.append("Differing items:")
         for k in diff:
-            explanation += [
+            explanation.append(
                 highlighter(saferepr({k: left[k]}))
                 + " != "
                 + highlighter(saferepr({k: right[k]}))
-            ]
+            )
     extra_left = set_left - set_right
-    len_extra_left = len(extra_left)
-    if len_extra_left:
+    if extra_left:
+        items_left = {k: left[k] for k in extra_left}
+        len_extra_left = len(items_left)
         explanation.append(
             "Left contains %d more item%s:"
             % (len_extra_left, "" if len_extra_left == 1 else "s")
         )
-        explanation.extend(
-            highlighter(pprint.pformat({k: left[k] for k in extra_left})).splitlines()
-        )
+        explanation.extend(highlighter(pprint.pformat(items_left)).splitlines())
+
     extra_right = set_right - set_left
-    len_extra_right = len(extra_right)
-    if len_extra_right:
+    if extra_right:
+        items_right = {k: right[k] for k in extra_right}
+        len_extra_right = len(items_right)
         explanation.append(
             "Right contains %d more item%s:"
             % (len_extra_right, "" if len_extra_right == 1 else "s")
         )
-        explanation.extend(
-            highlighter(pprint.pformat({k: right[k] for k in extra_right})).splitlines()
-        )
+        explanation.extend(highlighter(pprint.pformat(items_right)).splitlines())
     return explanation
 
 
