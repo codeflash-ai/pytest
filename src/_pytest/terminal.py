@@ -7,7 +7,6 @@ This is a good source for looking at the various reporting hooks.
 import argparse
 from collections import Counter
 import dataclasses
-import datetime
 from functools import partial
 import inspect
 from pathlib import Path
@@ -1490,9 +1489,21 @@ def format_session_duration(seconds: float) -> str:
     """Format the given seconds in a human readable manner to show in the final summary."""
     if seconds < 60:
         return f"{seconds:.2f}s"
+    # Avoid creating timedelta and str(dt) twice, format them directly
+    int_seconds = int(seconds)
+    minutes, s = divmod(int_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    # Reproduce datetime.timedelta's string formatting as closely as possible,
+    # as dt.__str__ returns variants like '2 days, 3:04:05'
+    if days:
+        # Use plural/singular as per timedelta
+        day_str = f"{days} day" if days == 1 else f"{days} days"
+        time_str = f"{hours}:{minutes:02}:{s:02}"
+        td_str = f"{day_str}, {time_str}"
     else:
-        dt = datetime.timedelta(seconds=int(seconds))
-        return f"{seconds:.2f}s ({dt})"
+        td_str = f"{hours}:{minutes:02}:{s:02}"
+    return f"{seconds:.2f}s ({td_str})"
 
 
 def _get_raw_skip_reason(report: TestReport) -> str:
