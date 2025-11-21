@@ -41,6 +41,9 @@ from _pytest.outcomes import skip
 from _pytest.warning_types import PytestWarning
 
 
+_IS_WIN32 = sys.platform.startswith("win")
+
+
 LOCK_TIMEOUT = 60 * 60 * 24 * 3
 
 
@@ -435,10 +438,14 @@ def fnmatch_ex(pattern: str, path: Union[str, "os.PathLike[str]"]) -> bool:
     * https://bugs.python.org/issue29249
     * https://bugs.python.org/issue34731
     """
-    path = PurePath(path)
-    iswin32 = sys.platform.startswith("win")
+    # Use path directly if already PurePath, else convert.
+    if not isinstance(path, PurePath):
+        path = PurePath(path)
 
-    if iswin32 and sep not in pattern and posix_sep in pattern:
+    if _IS_WIN32 and sep not in pattern and posix_sep in pattern:
+        # Running on Windows, the pattern has no Windows path separators,
+        # and the pattern has one or more Posix path separators. Replace
+        # the Posix path separators with the Windows path separator.
         # Running on Windows, the pattern has no Windows path separators,
         # and the pattern has one or more Posix path separators. Replace
         # the Posix path separators with the Windows path separator.
