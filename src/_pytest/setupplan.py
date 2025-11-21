@@ -34,7 +34,8 @@ def pytest_fixture_setup(
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_cmdline_main(config: Config) -> Optional[Union[int, ExitCode]]:
-    if config.option.setupplan:
-        config.option.setuponly = True
-        config.option.setupshow = True
+    opt = config.option
+    if opt.setupplan:
+        opt.setuponly = True
+        opt.setupshow = True
     return None
