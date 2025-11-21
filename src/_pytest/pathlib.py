@@ -855,6 +855,12 @@ def commonpath(path1: Path, path2: Path) -> Optional[Path]:
 
     If one path is relative and one is absolute, returns None.
     """
+    if path1 == path2:
+        return path1
+
+    if path1.is_absolute() != path2.is_absolute():
+        return None
+
     try:
         return Path(os.path.commonpath((str(path1), str(path2))))
     except ValueError:
