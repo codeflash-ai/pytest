@@ -13,6 +13,11 @@ from ..compat import assert_never
 from .wcwidth import wcswidth
 
 
+_env = os.environ
+
+_getenv = _env.get
+
+
 # This code was initially copied from py 1.8.1, file _io/terminalwriter.py.
 
 
@@ -27,17 +32,14 @@ def get_terminal_width() -> int:
 
 
 def should_do_markup(file: TextIO) -> bool:
-    if os.environ.get("PY_COLORS") == "1":
-        return True
-    if os.environ.get("PY_COLORS") == "0":
+    py_colors = _getenv("PY_COLORS")
+    if py_colors is not None:
+        return py_colors == "1"
+    if "NO_COLOR" in _env:
         return False
-    if os.environ.get("NO_COLOR"):
-        return False
-    if os.environ.get("FORCE_COLOR"):
+    if "FORCE_COLOR" in _env:
         return True
-    return (
-        hasattr(file, "isatty") and file.isatty() and os.environ.get("TERM") != "dumb"
-    )
+    return hasattr(file, "isatty") and file.isatty() and _getenv("TERM") != "dumb"
 
 
 @final
