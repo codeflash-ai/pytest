@@ -3,6 +3,7 @@
 
 import bdb
 from contextlib import contextmanager
+from doctest import register_optionflag
 import functools
 import inspect
 import os
@@ -298,7 +299,7 @@ class DoctestItem(Item):
     def runtest(self) -> None:
         _check_all_skipped(self.dtest)
         self._disable_output_capturing_for_darwin()
-        failures: List["doctest.DocTestFailure"] = []
+        failures: List[doctest.DocTestFailure] = []
         # Type ignored because we change the type of `out` from what
         # doctest expects.
         self.runner.run(self.dtest, out=failures)  # type: ignore[arg-type]
@@ -698,9 +699,7 @@ def _get_checker() -> "doctest.OutputChecker":
 
 def _get_allow_unicode_flag() -> int:
     """Register and return the ALLOW_UNICODE flag."""
-    import doctest
-
-    return doctest.register_optionflag("ALLOW_UNICODE")
+    return register_optionflag("ALLOW_UNICODE")
 
 
 def _get_allow_bytes_flag() -> int:
