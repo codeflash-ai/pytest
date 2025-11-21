@@ -442,9 +442,13 @@ def _compare_lt_set(
     highlighter: _HighlightFunc,
     verbose: int = 0,
 ) -> List[str]:
-    explanation = _compare_lte_set(left, right, highlighter)
-    if not explanation:
+    # Inline and avoid repeated _compare_lte_set call
+    diff = left - right
+    if not diff:
         return ["Both sets are equal"]
+    explanation = ["Extra items in the left set:"]
+    for item in diff:
+        explanation.append(highlighter(repr(item)))
     return explanation
 
 
