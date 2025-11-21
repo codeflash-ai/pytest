@@ -150,14 +150,13 @@ def ensure_extended_length_path(path: Path) -> Path:
 
 def get_extended_length_path_str(path: str) -> str:
     """Convert a path to a Windows extended length path."""
-    long_path_prefix = "\\\\?\\"
-    unc_long_path_prefix = "\\\\?\\UNC\\"
-    if path.startswith((long_path_prefix, unc_long_path_prefix)):
+    # Use direct string slicing and only one prefix check for maximum efficiency
+    if path.startswith("\\\\?\\"):
         return path
-    # UNC
     if path.startswith("\\\\"):
-        return unc_long_path_prefix + path[2:]
-    return long_path_prefix + path
+        # UNC path: remove the initial two slashes and prepend UNC prefix
+        return "\\\\?\\UNC\\" + path[2:]
+    return "\\\\?\\" + path
 
 
 def rm_rf(path: Path) -> None:
