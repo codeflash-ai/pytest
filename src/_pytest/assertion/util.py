@@ -430,9 +430,12 @@ def _compare_gt_set(
     highlighter: _HighlightFunc,
     verbose: int = 0,
 ) -> List[str]:
-    explanation = _compare_gte_set(left, right, highlighter)
-    if not explanation:
+    # Inline the call to _compare_gte_set for efficiency
+    diff = right - left
+    if not diff:
         return ["Both sets are equal"]
+    explanation = ["Extra items in the right set:"]
+    explanation.extend(highlighter(item.__repr__()) for item in diff)
     return explanation
 
 
