@@ -513,10 +513,17 @@ class DropShorterLongHelpFormatter(argparse.HelpFormatter):
             # a shortcut for '-h, --help' or '--abc', '-a'
             action._formatted_action_invocation = orgstr  # type: ignore
             return orgstr
-        return_list = []
+
+        # Use a single pass to compute everything for both following loops.
         short_long: Dict[str, str] = {}
+        return_list = []
+        # Precompute replaces for all options and groupings
+        option_data = []
         for option in options:
             if len(option) == 2 or option[2] == " ":
+                option_data.append(
+                    (option, None, None)
+                )  # short, no long representation
                 continue
             if not option.startswith("--"):
                 raise ArgumentError(
@@ -524,17 +531,22 @@ class DropShorterLongHelpFormatter(argparse.HelpFormatter):
                 )
             xxoption = option[2:]
             shortened = xxoption.replace("-", "")
-            if shortened not in short_long or len(short_long[shortened]) < len(
-                xxoption
-            ):
+            # Only store the longest representation (with more dashes) for each 'shortened'
+            cur_val = short_long.get(shortened)
+            if cur_val is None or len(cur_val) < len(xxoption):
                 short_long[shortened] = xxoption
-        # now short_long has been filled out to the longest with dashes
-        # **and** we keep the right option ordering from add_argument
-        for option in options:
-            if len(option) == 2 or option[2] == " ":
+            option_data.append((option, xxoption, shortened))
+
+        for option, xxoption, shortened in option_data:
+            if xxoption is None:
                 return_list.append(option)
-            if option[2:] == short_long.get(option.replace("-", "")):
-                return_list.append(option.replace(" ", "=", 1))
+            else:
+                # Use precomputed 'shortened' directly for the lookup
+                target = short_long[shortened]
+                if xxoption == target:
+                    # Replace first space with = for long options that are kept
+                    return_list.append(option.replace(" ", "=", 1))
+
         formatted_action_invocation = ", ".join(return_list)
         action._formatted_action_invocation = formatted_action_invocation  # type: ignore
         return formatted_action_invocation
