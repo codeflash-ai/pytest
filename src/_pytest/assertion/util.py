@@ -605,5 +605,6 @@ def _notin_text(term: str, text: str, verbose: int = 0) -> List[str]:
 
 def running_on_ci() -> bool:
     """Check if we're currently running on a CI system."""
-    env_vars = ["CI", "BUILD_NUMBER"]
-    return any(var in os.environ for var in env_vars)
+    env = os.environ
+    # Avoid list allocation; check membership efficiently
+    return "CI" in env or "BUILD_NUMBER" in env
