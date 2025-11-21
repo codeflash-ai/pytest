@@ -7,6 +7,7 @@ from errno import ELOOP
 from errno import ENOENT
 from errno import ENOTDIR
 import fnmatch
+from functools import lru_cache
 from functools import partial
 import importlib.util
 import itertools
@@ -861,6 +862,7 @@ def commonpath(path1: Path, path2: Path) -> Optional[Path]:
         return None
 
 
+@lru_cache(maxsize=8192)
 def bestrelpath(directory: Path, dest: Path) -> str:
     """Return a string which is a relative path from directory to dest such
     that directory/bestrelpath == dest.
