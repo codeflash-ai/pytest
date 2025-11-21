@@ -87,25 +87,41 @@ def _format_lines(lines: Sequence[str]) -> List[str]:
     result = list(lines[:1])
     stack = [0]
     stackcnt = [0]
+    # Cache len, string mul, result.append locally for faster access
+    append = result.append
+    stack_append = stack.append
+    stack_pop = stack.pop
+    stackcnt_append = stackcnt.append
+    stackcnt_pop = stackcnt.pop
+
     for line in lines[1:]:
-        if line.startswith("{"):
+        first_char = line[0]
+        if first_char == "{":
+            # Avoid repeated len() calls and string concatenation inefficiency
+            depth = len(stack)
             if stackcnt[-1]:
                 s = "and   "
             else:
                 s = "where "
-            stack.append(len(result))
+            stack_append(len(result))
             stackcnt[-1] += 1
-            stackcnt.append(0)
-            result.append(" +" + "  " * (len(stack) - 1) + s + line[1:])
-        elif line.startswith("}"):
-            stack.pop()
-            stackcnt.pop()
-            result[stack[-1]] += line[1:]
+            stackcnt_append(0)
+            append(f" +{'  ' * (depth)}{s}{line[1:]}")
+        elif first_char == "}":
+            stack_pop()
+            stackcnt_pop()
+            # Use local var for stack[-1]
+            idx = stack[-1]
+            # Fast string concatenation
+            result[idx] = result[idx] + line[1:]
         else:
-            assert line[0] in ["~", ">"]
+            # Avoid repeated indexing and method calls
+            assert first_char in ("~", ">")
             stack[-1] += 1
-            indent = len(stack) if line.startswith("~") else len(stack) - 1
-            result.append("  " * indent + line[1:])
+            # Use integer math, avoid if-else's repeated len()
+            is_tilde = first_char == "~"
+            depth = len(stack) if is_tilde else len(stack) - 1
+            append(f"{'  ' * depth}{line[1:]}")
     assert len(stack) == 1
     return result
 
