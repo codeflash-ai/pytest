@@ -42,6 +42,7 @@ class Checkers:
     _depend_on_existence = "exists", "link", "dir", "file"
 
     def __init__(self, path):
+        self._str_path = str(path)
         self.path = path
 
     def dotfile(self):
@@ -65,7 +66,7 @@ class Checkers:
         return self.path.fnmatch(arg)
 
     def endswith(self, arg):
-        return str(self.path).endswith(arg)
+        return self._str_path.endswith(arg)
 
     def _evaluate(self, kw):
         from .._code.source import getrawcode
