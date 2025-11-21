@@ -298,7 +298,7 @@ class DoctestItem(Item):
     def runtest(self) -> None:
         _check_all_skipped(self.dtest)
         self._disable_output_capturing_for_darwin()
-        failures: List["doctest.DocTestFailure"] = []
+        failures: List[doctest.DocTestFailure] = []
         # Type ignored because we change the type of `out` from what
         # doctest expects.
         self.runner.run(self.dtest, out=failures)  # type: ignore[arg-type]
@@ -412,11 +412,10 @@ def get_optionflags(config: Config) -> int:
 
 def _get_continue_on_failure(config: Config) -> bool:
     continue_on_failure: bool = config.getvalue("doctest_continue_on_failure")
-    if continue_on_failure:
-        # We need to turn off this if we use pdb since we should stop at
-        # the first failure.
-        if config.getvalue("usepdb"):
-            continue_on_failure = False
+    if not continue_on_failure:
+        return False
+    if config.getvalue("usepdb"):
+        continue_on_failure = False
     return continue_on_failure
 
 
