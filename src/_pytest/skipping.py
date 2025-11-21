@@ -26,6 +26,9 @@ from _pytest.runner import CallInfo
 from _pytest.stash import StashKey
 
 
+_condition_code_cache = {}
+
+
 def pytest_addoption(parser: Parser) -> None:
     group = parser.getgroup("general")
     group.addoption(
@@ -101,9 +104,10 @@ def evaluate_condition(item: Item, mark: Mark, condition: object) -> Tuple[bool,
             "platform": platform,
             "config": item.config,
         }
-        for dictionary in reversed(
-            item.ihook.pytest_markeval_namespace(config=item.config)
-        ):
+        ihook_namespace_results = item.ihook.pytest_markeval_namespace(
+            config=item.config
+        )
+        for dictionary in reversed(ihook_namespace_results):
             if not isinstance(dictionary, Mapping):
                 raise ValueError(
                     f"pytest_markeval_namespace() needs to return a dict, got {dictionary!r}"
@@ -111,10 +115,17 @@ def evaluate_condition(item: Item, mark: Mark, condition: object) -> Tuple[bool,
             globals_.update(dictionary)
         if hasattr(item, "obj"):
             globals_.update(item.obj.__globals__)
+
+        filename = f"<{mark.name} condition>"
+        cache_key = (condition, filename)
         try:
-            filename = f"<{mark.name} condition>"
-            condition_code = compile(condition, filename, "eval")
-            result = eval(condition_code, globals_)
+            code = _condition_code_cache[cache_key]
+        except KeyError:
+            code = compile(condition, filename, "eval")
+            _condition_code_cache[cache_key] = code
+
+        try:
+            result = eval(code, globals_)
         except SyntaxError as exc:
             msglines = [
                 "Error evaluating %r condition" % mark.name,
@@ -196,7 +207,7 @@ def evaluate_skip_marks(item: Item) -> Optional[Skip]:
 class Xfail:
     """The result of evaluate_xfail_marks()."""
 
-    __slots__ = ("reason", "run", "strict", "raises")
+    __slots__ = ("raises", "reason", "run", "strict")
 
     reason: str
     run: bool

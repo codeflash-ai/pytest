@@ -147,14 +147,14 @@ class Node(abc.ABC, metaclass=NodeMeta):
     # Use __slots__ to make attribute access faster.
     # Note that __dict__ is still available.
     __slots__ = (
-        "name",
-        "parent",
-        "config",
-        "session",
-        "path",
+        "__dict__",
         "_nodeid",
         "_store",
-        "__dict__",
+        "config",
+        "name",
+        "parent",
+        "path",
+        "session",
     )
 
     def __init__(
