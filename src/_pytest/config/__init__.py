@@ -54,6 +54,8 @@ import _pytest._code
 from _pytest._code import ExceptionInfo
 from _pytest._code import filter_traceback
 from _pytest._io import TerminalWriter
+from _pytest.config.argparsing import FILE_OR_DIR
+from _pytest.config.argparsing import Parser
 import _pytest.deprecated
 import _pytest.hookspec
 from _pytest.outcomes import fail
@@ -1025,13 +1027,10 @@ class Config:
 
     def __init__(
         self,
-        pluginmanager: PytestPluginManager,
+        pluginmanager: "PytestPluginManager",
         *,
-        invocation_params: Optional[InvocationParams] = None,
+        invocation_params: Optional["InvocationParams"] = None,
     ) -> None:
-        from .argparsing import FILE_OR_DIR
-        from .argparsing import Parser
-
         if invocation_params is None:
             invocation_params = self.InvocationParams(
                 args=(), plugins=None, dir=Path.cwd()
@@ -1484,9 +1483,9 @@ class Config:
 
     def parse(self, args: List[str], addopts: bool = True) -> None:
         # Parse given cmdline arguments into this config object.
-        assert (
-            self.args == []
-        ), "can only parse cmdline args at most once per Config object"
+        assert self.args == [], (
+            "can only parse cmdline args at most once per Config object"
+        )
         self.hook.pytest_addhooks.call_historic(
             kwargs=dict(pluginmanager=self.pluginmanager)
         )
@@ -1906,7 +1905,7 @@ def parse_warning_filter(
         parts.append("")
     action_, message, category_, module, lineno_ = (s.strip() for s in parts)
     try:
-        action: "warnings._ActionKind" = warnings._getaction(action_)  # type: ignore[attr-defined]
+        action: warnings._ActionKind = warnings._getaction(action_)  # type: ignore[attr-defined]
     except warnings._OptionError as e:
         raise UsageError(error_template.format(error=str(e))) from None
     try:
