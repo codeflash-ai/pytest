@@ -1474,15 +1474,17 @@ def pluralize(count: int, noun: str) -> Tuple[int, str]:
 
 def _plugin_nameversions(plugininfo) -> List[str]:
     values: List[str] = []
+    seen = set()
+    append = values.append
     for plugin, dist in plugininfo:
         # Gets us name and version!
         name = f"{dist.project_name}-{dist.version}"
         # Questionable convenience, but it keeps things short.
         if name.startswith("pytest-"):
             name = name[7:]
-        # We decided to print python package names they can have more than one plugin.
-        if name not in values:
-            values.append(name)
+        if name not in seen:
+            append(name)
+            seen.add(name)
     return values
 
 
