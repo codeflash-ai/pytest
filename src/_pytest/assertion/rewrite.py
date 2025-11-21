@@ -57,7 +57,7 @@ assertstate_key = StashKey["AssertionState"]()
 
 # pytest caches rewritten pycs in pycache dirs
 PYTEST_TAG = f"{sys.implementation.cache_tag}-pytest-{version}"
-PYC_EXT = ".py" + (__debug__ and "c" or "o")
+PYC_EXT = ".py" + ((__debug__ and "c") or "o")
 PYC_TAIL = "." + PYTEST_TAG + PYC_EXT
 
 # Special marker that denotes we have just left a scope definition
@@ -471,7 +471,7 @@ def _should_repr_global_name(obj: object) -> bool:
 
 
 def _format_boolop(explanations: Iterable[str], is_or: bool) -> str:
-    explanation = "(" + (is_or and " or " or " and ").join(explanations) + ")"
+    explanation = "(" + ((is_or and " or ") or " and ").join(explanations) + ")"
     return explanation.replace("%", "%%")
 
 
@@ -547,6 +547,13 @@ def _get_assertion_exprs(src: bytes) -> Dict[int, str]:
     """Return a mapping from {lineno: "assertion test expression"}."""
     ret: Dict[int, str] = {}
 
+    # Locally cache lookup for tokenize.OP and tokenize.NAME to avoid repeated lookups
+    OP = tokenize.OP
+    NAME = tokenize.NAME
+    NEWLINE = tokenize.NEWLINE
+    ENDMARKER = tokenize.ENDMARKER
+
+    # Use local vars for 'append', 'add', 'set', etc. for performance in tight loops
     depth = 0
     lines: List[str] = []
     assert_lineno: Optional[int] = None
@@ -555,28 +562,42 @@ def _get_assertion_exprs(src: bytes) -> Dict[int, str]:
     def _write_and_reset() -> None:
         nonlocal depth, lines, assert_lineno, seen_lines
         assert assert_lineno is not None
-        ret[assert_lineno] = "".join(lines).rstrip().rstrip("\\")
+        # "".join(lines).rstrip() is performance sensitive in loops, but the rstrip here is required for correctness
+        # Minimal optimization here by avoiding chained rstrip calls:
+        joined = "".join(lines)
+        s = joined.rstrip()  # First remove trailing whitespace and newlines
+        if s.endswith("\\"):
+            s = s[:-1]
+        ret[assert_lineno] = s
         depth = 0
-        lines = []
+        lines.clear()  # more memory-efficient than lines = []
         assert_lineno = None
-        seen_lines = set()
+        seen_lines.clear()
 
-    tokens = tokenize.tokenize(io.BytesIO(src).readline)
+    # Use local variables for append and add methods (hot in loop)
+    lines_append = lines.append
+    seen_lines_add = seen_lines.add
+
+    readline = io.BytesIO(src).readline
+    tokens = tokenize.tokenize(readline)
+    append_to_lines = lines.append
+    add_seen_line = seen_lines.add
+
     for tp, source, (lineno, offset), _, line in tokens:
-        if tp == tokenize.NAME and source == "assert":
+        if tp == NAME and source == "assert":
             assert_lineno = lineno
         elif assert_lineno is not None:
-            # keep track of depth for the assert-message `,` lookup
-            if tp == tokenize.OP and source in "([{":
+            if tp == OP and source in "([{":
                 depth += 1
-            elif tp == tokenize.OP and source in ")]}":
+            elif tp == OP and source in ")]}":
                 depth -= 1
 
             if not lines:
-                lines.append(line[offset:])
-                seen_lines.add(lineno)
-            # a non-nested comma separates the expression from the message
-            elif depth == 0 and tp == tokenize.OP and source == ",":
+                # Use slice directly to avoid unneeded string concatenations
+                lines_append(line[offset:])
+                seen_lines_add(lineno)
+            elif depth == 0 and tp == OP and source == ",":
+                # one line assert with message
                 # one line assert with message
                 if lineno in seen_lines and len(lines) == 1:
                     offset_in_trimmed = offset + len(lines[-1]) - len(line)
@@ -586,13 +607,14 @@ def _get_assertion_exprs(src: bytes) -> Dict[int, str]:
                     lines[-1] = lines[-1][:offset]
                 # multi line assert with escapd newline before message
                 else:
-                    lines.append(line[:offset])
+                    lines_append(line[:offset])
                 _write_and_reset()
-            elif tp in {tokenize.NEWLINE, tokenize.ENDMARKER}:
+            elif tp in (NEWLINE, ENDMARKER):
                 _write_and_reset()
-            elif lines and lineno not in seen_lines:
-                lines.append(line)
-                seen_lines.add(lineno)
+            elif lineno not in seen_lines:
+                # Only append if this line hasn't been seen
+                lines_append(line)
+                seen_lines_add(lineno)
 
     return ret
 
