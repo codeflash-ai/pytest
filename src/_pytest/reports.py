@@ -348,9 +348,9 @@ class TestReport(BaseReport):
             elif isinstance(excinfo.value, skip.Exception):
                 outcome = "skipped"
                 r = excinfo._getreprcrash()
-                assert (
-                    r is not None
-                ), "There should always be a traceback entry for skipping a test."
+                assert r is not None, (
+                    "There should always be a traceback entry for skipping a test."
+                )
                 if excinfo.value._use_item_location:
                     path, line = item.reportinfo()[:2]
                     assert line is not None
@@ -476,14 +476,18 @@ def _report_to_json(report: BaseReport) -> Dict[str, Any]:
         entry: Union[ReprEntry, ReprEntryNative],
     ) -> Dict[str, Any]:
         data = dataclasses.asdict(entry)
-        for key, value in data.items():
-            if hasattr(value, "__dict__"):
-                data[key] = dataclasses.asdict(value)
-        entry_data = {"type": type(entry).__name__, "data": data}
-        return entry_data
+        return {"type": type(entry).__name__, "data": data}
 
     def serialize_repr_traceback(reprtraceback: ReprTraceback) -> Dict[str, Any]:
-        result = dataclasses.asdict(reprtraceback)
+        # asdict copies reprentries, but we want to run our serialize_repr_entry
+        # Avoid asdict except for the fields other than reprentries
+        # Since ReprTraceback should be a dataclass, fields() should be available
+        fields = dataclasses.fields(reprtraceback)
+        result = {}
+        for f in fields:
+            if f.name == "reprentries":
+                continue
+            result[f.name] = getattr(reprtraceback, f.name)
         result["reprentries"] = [
             serialize_repr_entry(x) for x in reprtraceback.reprentries
         ]
@@ -497,7 +501,7 @@ def _report_to_json(report: BaseReport) -> Dict[str, Any]:
         else:
             return None
 
-    def serialize_exception_longrepr(rep: BaseReport) -> Dict[str, Any]:
+    def serialize_exception_longrepr(rep: "BaseReport") -> Dict[str, Any]:
         assert rep.longrepr is not None
         # TODO: Investigate whether the duck typing is really necessary here.
         longrepr = cast(ExceptionRepr, rep.longrepr)
@@ -507,9 +511,13 @@ def _report_to_json(report: BaseReport) -> Dict[str, Any]:
             "sections": longrepr.sections,
         }
         if isinstance(longrepr, ExceptionChainRepr):
-            result["chain"] = []
-            for repr_traceback, repr_crash, description in longrepr.chain:
-                result["chain"].append(
+            # Pre-allocate result["chain"] for perf
+            chain_app = result["chain"] = []
+            chain = longrepr.chain
+            # Minor loop hoisting/field reuse
+            append = chain_app.append
+            for repr_traceback, repr_crash, description in chain:
+                append(
                     (
                         serialize_repr_traceback(repr_traceback),
                         serialize_repr_crash(repr_crash),
@@ -521,20 +529,35 @@ def _report_to_json(report: BaseReport) -> Dict[str, Any]:
         return result
 
     d = report.__dict__.copy()
-    if hasattr(report.longrepr, "toterminal"):
-        if hasattr(report.longrepr, "reprtraceback") and hasattr(
-            report.longrepr, "reprcrash"
-        ):
+
+    longrepr = getattr(report, "longrepr", None)
+    if hasattr(longrepr, "toterminal"):
+        if hasattr(longrepr, "reprtraceback") and hasattr(longrepr, "reprcrash"):
             d["longrepr"] = serialize_exception_longrepr(report)
         else:
-            d["longrepr"] = str(report.longrepr)
+            d["longrepr"] = str(longrepr)
     else:
-        d["longrepr"] = report.longrepr
-    for name in d:
-        if isinstance(d[name], os.PathLike):
-            d[name] = os.fspath(d[name])
-        elif name == "result":
-            d[name] = None  # for now
+        d["longrepr"] = longrepr
+
+    # Fast path: first check if no os.PathLike or result present
+    need_pathlike_conversion = False
+    need_result_patch = False
+    for v in d.values():
+        if isinstance(v, os.PathLike):
+            need_pathlike_conversion = True
+            break
+    if not need_pathlike_conversion:
+        need_result_patch = "result" in d
+
+    # If there are os.PathLike or result is present, fix those in a single efficient loop
+    if need_pathlike_conversion or need_result_patch:
+        for name in d:
+            value = d[name]
+            if isinstance(value, os.PathLike):
+                d[name] = os.fspath(value)
+            elif name == "result":
+                d[name] = None  # for now
+
     return d
 
 
