@@ -356,7 +356,7 @@ class SysCaptureBase(CaptureBase[AnyStr]):
         return "<{} {} _old={} _state={!r} tmpfile={!r}>".format(
             class_name,
             self.name,
-            hasattr(self, "_old") and repr(self._old) or "<UNSET>",
+            (hasattr(self, "_old") and repr(self._old)) or "<UNSET>",
             self._state,
             self.tmpfile,
         )
@@ -365,16 +365,16 @@ class SysCaptureBase(CaptureBase[AnyStr]):
         return "<{} {} _old={} _state={!r} tmpfile={!r}>".format(
             self.__class__.__name__,
             self.name,
-            hasattr(self, "_old") and repr(self._old) or "<UNSET>",
+            (hasattr(self, "_old") and repr(self._old)) or "<UNSET>",
             self._state,
             self.tmpfile,
         )
 
     def _assert_state(self, op: str, states: Tuple[str, ...]) -> None:
-        assert (
-            self._state in states
-        ), "cannot {} in state {!r}: expected one of {}".format(
-            op, self._state, ", ".join(states)
+        assert self._state in states, (
+            "cannot {} in state {!r}: expected one of {}".format(
+                op, self._state, ", ".join(states)
+            )
         )
 
     def start(self) -> None:
@@ -488,10 +488,10 @@ class FDCaptureBase(CaptureBase[AnyStr]):
         )
 
     def _assert_state(self, op: str, states: Tuple[str, ...]) -> None:
-        assert (
-            self._state in states
-        ), "cannot {} in state {!r}: expected one of {}".format(
-            op, self._state, ", ".join(states)
+        assert self._state in states, (
+            "cannot {} in state {!r}: expected one of {}".format(
+                op, self._state, ", ".join(states)
+            )
         )
 
     def start(self) -> None:
@@ -728,6 +728,11 @@ class CaptureManager:
         self._global_capturing: Optional[MultiCapture[str]] = None
         self._capture_fixture: Optional[CaptureFixture[Any]] = None
 
+        # Global capturing control
+
+        # Precompute the capturing state for faster repeated access in is_globally_capturing
+        self._is_globally_capturing: Final = method != "no"
+
     def __repr__(self) -> str:
         return (
             f"<CaptureManager _method={self._method!r} _global_capturing={self._global_capturing!r} "
@@ -744,7 +749,7 @@ class CaptureManager:
     # Global capturing control
 
     def is_globally_capturing(self) -> bool:
-        return self._method != "no"
+        return self._is_globally_capturing
 
     def start_global_capturing(self) -> None:
         assert self._global_capturing is None
