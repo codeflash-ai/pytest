@@ -43,6 +43,7 @@ from _pytest._io import TerminalWriter
 from _pytest._io.wcwidth import wcswidth
 import _pytest._version
 from _pytest.assertion.util import running_on_ci
+import _pytest.config
 from _pytest.config import _PluggyPlugin
 from _pytest.config import Config
 from _pytest.config import ExitCode
@@ -351,8 +352,6 @@ class WarningReport:
 @final
 class TerminalReporter:
     def __init__(self, config: Config, file: Optional[TextIO] = None) -> None:
-        import _pytest.config
-
         self.config = config
         self._numcollected = 0
         self._session: Optional[Session] = None
@@ -486,8 +485,8 @@ class TerminalReporter:
         self._tw.flush()
 
     def write_line(self, line: Union[str, bytes], **markup: bool) -> None:
-        if not isinstance(line, str):
-            line = str(line, errors="replace")
+        if isinstance(line, bytes):
+            line = line.decode(errors="replace")
         self.ensure_newline()
         self._tw.line(line, **markup)
 
