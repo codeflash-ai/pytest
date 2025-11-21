@@ -44,7 +44,8 @@ class _HighlightFunc(Protocol):
 
 
 def format_explanation(explanation: str) -> str:
-    r"""Format an explanation.
+    """Format an explanation.
+
 
     Normally all embedded newlines are escaped, however there are
     three exceptions: \n{, \n} and \n~.  The first two are intended
@@ -59,19 +60,29 @@ def format_explanation(explanation: str) -> str:
 
 
 def _split_explanation(explanation: str) -> List[str]:
-    r"""Return a list of individual lines in the explanation.
+    """Return a list of individual lines in the explanation.
+
 
     This will return a list of lines split on '\n{', '\n}' and '\n~'.
     Any other newlines will be escaped and appear in the line as the
     literal '\n' characters.
     """
-    raw_lines = (explanation or "").split("\n")
-    lines = [raw_lines[0]]
+    if not explanation:
+        return [""]
+    raw_lines = explanation.split("\n")
+    raw_lines_len = len(raw_lines)
+    if raw_lines_len == 1:
+        return [explanation]
+
+    first = raw_lines[0]
+    lines = [first]
+    append = lines.append
     for values in raw_lines[1:]:
-        if values and values[0] in ["{", "}", "~", ">"]:
-            lines.append(values)
+        if values and values[0] in {"{", "}", "~", ">"}:
+            append(values)
         else:
-            lines[-1] += "\\n" + values
+            # Using f-string is slightly faster than concatenation for small strings.
+            lines[-1] = f"{lines[-1]}\\n{values}"
     return lines
 
 
@@ -84,28 +95,46 @@ def _format_lines(lines: Sequence[str]) -> List[str]:
 
     Return a list of formatted lines.
     """
-    result = list(lines[:1])
+    result = [lines[0]]
     stack = [0]
     stackcnt = [0]
+    result_append = result.append
+    stack_append = stack.append
+    stack_pop = stack.pop
+    stackcnt_append = stackcnt.append
+    stackcnt_pop = stackcnt.pop
+
+    INDENT_2 = "  "
+    LEN_INDENT_2 = len(INDENT_2)
+
     for line in lines[1:]:
-        if line.startswith("{"):
+        l0 = line[0]
+        if l0 == "{":
             if stackcnt[-1]:
                 s = "and   "
             else:
                 s = "where "
-            stack.append(len(result))
+            nest = len(stack)
+            stack_append(len(result))
             stackcnt[-1] += 1
-            stackcnt.append(0)
-            result.append(" +" + "  " * (len(stack) - 1) + s + line[1:])
-        elif line.startswith("}"):
-            stack.pop()
-            stackcnt.pop()
+            stackcnt_append(0)
+            # Precompute indent
+            indent = INDENT_2 * nest
+            result_append(f" +{indent}{s}{line[1:]}")
+        elif l0 == "}":
+            stack_pop()
+            stackcnt_pop()
+            # In-place add to correct line
             result[stack[-1]] += line[1:]
         else:
-            assert line[0] in ["~", ">"]
+            # assert line[0] in ["~", ">"]
+            assert l0 in ("~", ">")
             stack[-1] += 1
-            indent = len(stack) if line.startswith("~") else len(stack) - 1
-            result.append("  " * indent + line[1:])
+            if l0 == "~":
+                indent = INDENT_2 * len(stack)
+            else:
+                indent = INDENT_2 * (len(stack) - 1)
+            result_append(f"{indent}{line[1:]}")
     assert len(stack) == 1
     return result
 
