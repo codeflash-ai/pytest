@@ -4,6 +4,7 @@
 import bdb
 from contextlib import contextmanager
 import functools
+from functools import lru_cache
 import inspect
 import os
 from pathlib import Path
@@ -298,7 +299,7 @@ class DoctestItem(Item):
     def runtest(self) -> None:
         _check_all_skipped(self.dtest)
         self._disable_output_capturing_for_darwin()
-        failures: List["doctest.DocTestFailure"] = []
+        failures: List[doctest.DocTestFailure] = []
         # Type ignored because we change the type of `out` from what
         # doctest expects.
         self.runner.run(self.dtest, out=failures)  # type: ignore[arg-type]
@@ -723,15 +724,7 @@ def _get_report_choice(key: str) -> int:
     We want to do it as late as possible to avoid importing `doctest` and all
     its dependencies when parsing options, as it adds overhead and breaks tests.
     """
-    import doctest
-
-    return {
-        DOCTEST_REPORT_CHOICE_UDIFF: doctest.REPORT_UDIFF,
-        DOCTEST_REPORT_CHOICE_CDIFF: doctest.REPORT_CDIFF,
-        DOCTEST_REPORT_CHOICE_NDIFF: doctest.REPORT_NDIFF,
-        DOCTEST_REPORT_CHOICE_ONLY_FIRST_FAILURE: doctest.REPORT_ONLY_FIRST_FAILURE,
-        DOCTEST_REPORT_CHOICE_NONE: 0,
-    }[key]
+    return _get_doctest_report_map()[key]
 
 
 @fixture(scope="session")
@@ -750,3 +743,16 @@ def doctest_namespace() -> Dict[str, Any]:
     For more details: :ref:`doctest_namespace`.
     """
     return dict()
+
+
+@lru_cache(maxsize=None)
+def _get_doctest_report_map():
+    import doctest
+
+    return {
+        DOCTEST_REPORT_CHOICE_UDIFF: doctest.REPORT_UDIFF,
+        DOCTEST_REPORT_CHOICE_CDIFF: doctest.REPORT_CDIFF,
+        DOCTEST_REPORT_CHOICE_NDIFF: doctest.REPORT_NDIFF,
+        DOCTEST_REPORT_CHOICE_ONLY_FIRST_FAILURE: doctest.REPORT_ONLY_FIRST_FAILURE,
+        DOCTEST_REPORT_CHOICE_NONE: 0,
+    }
