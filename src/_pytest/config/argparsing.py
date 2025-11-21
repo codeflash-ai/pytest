@@ -269,18 +269,15 @@ class Argument:
         self._attrs = attrs
         self._short_opts: List[str] = []
         self._long_opts: List[str] = []
-        try:
+        # Inline dict get for type and default to avoid potential repeated lookups
+        if "type" in attrs:
             self.type = attrs["type"]
-        except KeyError:
-            pass
-        try:
+        if "default" in attrs:
             # Attribute existence is tested in Config._processopt.
             self.default = attrs["default"]
-        except KeyError:
-            pass
         self._set_opt_strings(names)
         dest: Optional[str] = attrs.get("dest")
-        if dest:
+        if dest is not None:
             self.dest = dest
         elif self._long_opts:
             self.dest = self._long_opts[0][2:].replace("-", "_")
@@ -296,13 +293,13 @@ class Argument:
 
     def attrs(self) -> Mapping[str, Any]:
         # Update any attributes set by processopt.
-        attrs = "default dest help".split()
-        attrs.append(self.dest)
+        # Avoid str and split at runtime by hardcoding the list, and use only needed keys
+        attrs = ["default", "dest", "help", self.dest]
         for attr in attrs:
-            try:
-                self._attrs[attr] = getattr(self, attr)
-            except AttributeError:
-                pass
+            # Avoid attribute exists check by using getattr with default
+            val = getattr(self, attr, None)
+            if val is not None:
+                self._attrs[attr] = val
         return self._attrs
 
     def _set_opt_strings(self, opts: Sequence[str]) -> None:
