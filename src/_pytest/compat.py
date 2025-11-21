@@ -6,6 +6,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import functools
+from functools import lru_cache
 import inspect
 from inspect import Parameter
 from inspect import signature
@@ -29,6 +30,7 @@ LEGACY_PATH = py.path. local
 # fmt: on
 
 
+@lru_cache(maxsize=256)
 def legacy_path(path: str | os.PathLike[str]) -> LEGACY_PATH:
     """Internal wrapper to prepare lazy proxies for legacy_path instances"""
     return LEGACY_PATH(path)
