@@ -654,28 +654,39 @@ class LocalPath:
         if not kw:
             obj.strpath = self.strpath
             return obj
-        drive, dirname, basename, purebasename, ext = self._getbyspec(
-            "drive,dirname,basename,purebasename,ext"
-        )
+
+        # Inline _getbyspec for this fixed specification for performance (very frequent usage)
+        strpath = self.strpath
+        sep = self.sep
+        parts = strpath.split(sep)
+        drive = parts[0]
+        dirname = sep.join(parts[:-1])
+        basename = parts[-1]
+        idx = basename.rfind(".")
+        if idx == -1:
+            purebasename, ext = basename, ""
+        else:
+            purebasename, ext = basename[:idx], basename[idx:]
+
         if "basename" in kw:
             if "purebasename" in kw or "ext" in kw:
                 raise ValueError("invalid specification %r" % kw)
         else:
             pb = kw.setdefault("purebasename", purebasename)
             try:
-                ext = kw["ext"]
+                ext_val = kw["ext"]
             except KeyError:
-                pass
+                ext_val = ext
             else:
-                if ext and not ext.startswith("."):
-                    ext = "." + ext
-            kw["basename"] = pb + ext
+                if ext_val and not ext_val.startswith("."):
+                    ext_val = "." + ext_val
+            kw["basename"] = pb + ext_val
 
         if "dirname" in kw and not kw["dirname"]:
             kw["dirname"] = drive
         else:
             kw.setdefault("dirname", dirname)
-        kw.setdefault("sep", self.sep)
+        kw.setdefault("sep", sep)
         obj.strpath = normpath("{dirname}{sep}{basename}".format(**kw))
         return obj
 
@@ -683,29 +694,28 @@ class LocalPath:
         """See new for what 'spec' can be."""
         res = []
         parts = self.strpath.split(self.sep)
-
-        args = filter(None, spec.split(","))
+        args = [name for name in spec.split(",") if name]
+        # Precompute basename analysis to avoid recomputation
+        # Only if any requested name uses basename-parts
+        basename = parts[-1] if parts else ""
+        idx = basename.rfind(".") if basename else -1
+        if idx == -1:
+            purebasename, ext = basename, ""
+        else:
+            purebasename, ext = basename[:idx], basename[idx:]
         for name in args:
             if name == "drive":
                 res.append(parts[0])
             elif name == "dirname":
                 res.append(self.sep.join(parts[:-1]))
+            elif name == "basename":
+                res.append(basename)
+            elif name == "purebasename":
+                res.append(purebasename)
+            elif name == "ext":
+                res.append(ext)
             else:
-                basename = parts[-1]
-                if name == "basename":
-                    res.append(basename)
-                else:
-                    i = basename.rfind(".")
-                    if i == -1:
-                        purebasename, ext = basename, ""
-                    else:
-                        purebasename, ext = basename[:i], basename[i:]
-                    if name == "purebasename":
-                        res.append(purebasename)
-                    elif name == "ext":
-                        res.append(ext)
-                    else:
-                        raise ValueError("invalid part specification %r" % name)
+                raise ValueError("invalid part specification %r" % name)
         return res
 
     def dirpath(self, *args, **kwargs):
