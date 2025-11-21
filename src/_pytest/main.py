@@ -350,18 +350,31 @@ def pytest_collection(session: "Session") -> None:
 
 
 def pytest_runtestloop(session: "Session") -> bool:
-    if session.testsfailed and not session.config.option.continue_on_collection_errors:
+    # Fast path: Use local variables to avoid repeated attribute lookup in the loop
+    config = session.config
+    option = config.option
+    items = session.items
+
+    # Error check before running tests
+    if session.testsfailed and not option.continue_on_collection_errors:
         raise session.Interrupted(
             "%d error%s during collection"
             % (session.testsfailed, "s" if session.testsfailed != 1 else "")
         )
 
-    if session.config.option.collectonly:
+    if option.collectonly:
         return True
 
-    for i, item in enumerate(session.items):
-        nextitem = session.items[i + 1] if i + 1 < len(session.items) else None
-        item.config.hook.pytest_runtest_protocol(item=item, nextitem=nextitem)
+    num_items = len(items)
+    hook = config.hook
+    shouldfail = session.shouldfail
+    shouldstop = session.shouldstop
+
+    # Iterate efficiently using index, avoid repeated len, and prefetch next item
+    for i in range(num_items):
+        item = items[i]
+        nextitem = items[i + 1] if i + 1 < num_items else None
+        hook.pytest_runtest_protocol(item=item, nextitem=nextitem)
         if session.shouldfail:
             raise session.Failed(session.shouldfail)
         if session.shouldstop:
