@@ -102,6 +102,13 @@ class ColoredLevelFormatter(DatetimeFormatter):
         self._original_fmt = self._style._fmt
         self._level_to_fmt_mapping: Dict[int, str] = {}
 
+        assert self._fmt is not None
+        levelname_fmt_match = self.LEVELNAME_FMT_REGEX.search(self._fmt)
+        if levelname_fmt_match:
+            self._levelname_fmt = levelname_fmt_match.group()
+        else:
+            self._levelname_fmt = None
+
         for level, color_opts in self.LOGLEVEL_COLOROPTS.items():
             self.add_color_level(level, *color_opts)
 
@@ -118,21 +125,23 @@ class ColoredLevelFormatter(DatetimeFormatter):
         .. warning::
             This is an experimental API.
         """
-        assert self._fmt is not None
-        levelname_fmt_match = self.LEVELNAME_FMT_REGEX.search(self._fmt)
-        if not levelname_fmt_match:
+        fmt = self._fmt
+        levelname_fmt = getattr(self, "_levelname_fmt", None)
+        if not (fmt and levelname_fmt):
             return
-        levelname_fmt = levelname_fmt_match.group()
 
         formatted_levelname = levelname_fmt % {"levelname": logging.getLevelName(level)}
 
         # add ANSI escape sequences around the formatted levelname
-        color_kwargs = {name: True for name in color_opts}
+        if color_opts:
+            color_kwargs = {name: True for name in color_opts}
+        else:
+            color_kwargs = {}
         colorized_formatted_levelname = self._terminalwriter.markup(
             formatted_levelname, **color_kwargs
         )
         self._level_to_fmt_mapping[level] = self.LEVELNAME_FMT_REGEX.sub(
-            colorized_formatted_levelname, self._fmt
+            colorized_formatted_levelname, fmt
         )
 
     def format(self, record: logging.LogRecord) -> str:
