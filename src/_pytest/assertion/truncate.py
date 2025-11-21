@@ -21,7 +21,10 @@ def truncate_if_required(
     explanation: List[str], item: Item, max_length: Optional[int] = None
 ) -> List[str]:
     """Truncate this assertion explanation if the given test item is eligible."""
-    if _should_truncate_item(item):
+    # Cache method & config lookup for speed
+    config = item.config
+    verbosity = config.get_verbosity(Config.VERBOSITY_ASSERTIONS)
+    if verbosity < 2 and not util.running_on_ci():
         return _truncate_explanation(explanation)
     return explanation
 
@@ -43,55 +46,52 @@ def _truncate_explanation(
     first, taking the truncation explanation into account. The remaining lines
     will be replaced by a usage message.
     """
-    if max_lines is None:
-        max_lines = DEFAULT_MAX_LINES
-    if max_chars is None:
-        max_chars = DEFAULT_MAX_CHARS
+    # Avoid method locals; use local names for tight loop performance
+    max_lines = DEFAULT_MAX_LINES if max_lines is None else max_lines
+    max_chars = DEFAULT_MAX_CHARS if max_chars is None else max_chars
 
-    # Check if truncation required
-    input_char_count = len("".join(input_lines))
-    # The length of the truncation explanation depends on the number of lines
-    # removed but is at least 68 characters:
-    # The real value is
-    # 64 (for the base message:
-    # '...\n...Full output truncated (1 line hidden), use '-vv' to show")'
-    # )
-    # + 1 (for plural)
-    # + int(math.log10(len(input_lines) - max_lines)) (number of hidden line, at least 1)
-    # + 3 for the '...' added to the truncated line
-    # But if there's more than 100 lines it's very likely that we're going to
-    # truncate, so we don't need the exact value using log10.
-    tolerable_max_chars = (
-        max_chars + 70  # 64 + 1 (for plural) + 2 (for '99') + 3 for '...'
-    )
+    input_len = len(input_lines)
+    tolerable_max_chars = max_chars + 70
     # The truncation explanation add two lines to the output
     tolerable_max_lines = max_lines + 2
-    if (
-        len(input_lines) <= tolerable_max_lines
-        and input_char_count <= tolerable_max_chars
-    ):
-        return input_lines
+
+    # Fast-path check directly on input_lines and length; avoids costly join if not needed
+    if input_len <= tolerable_max_lines:
+        # Only join if line count is below threshold
+        if sum(len(s) for s in input_lines) <= tolerable_max_chars:
+            return input_lines
+    else:
+        # More than tolerable lines, definitely need truncation
+        pass
+
+    # Truncate to line limit first
     # Truncate first to max_lines, and then truncate to max_chars if necessary
     truncated_explanation = input_lines[:max_lines]
     truncated_char = True
-    # We reevaluate the need to truncate chars following removal of some lines
-    if len("".join(truncated_explanation)) > tolerable_max_chars:
+
+    # Optimize char count logic: use an incremental sum, don't re-join
+    char_count = 0
+    for s in truncated_explanation:
+        char_count += len(s)
+    if char_count > tolerable_max_chars:
         truncated_explanation = _truncate_by_char_count(
             truncated_explanation, max_chars
         )
     else:
         truncated_char = False
 
-    truncated_line_count = len(input_lines) - len(truncated_explanation)
-    if truncated_explanation[-1]:
+    truncated_line_count = input_len - len(truncated_explanation)
+    last_idx = -1
+    last_line = truncated_explanation[last_idx]
+    if last_line:
         # Add ellipsis and take into account part-truncated final line
-        truncated_explanation[-1] = truncated_explanation[-1] + "..."
+        truncated_explanation[last_idx] = last_line + "..."
         if truncated_char:
             # It's possible that we did not remove any char from this line
             truncated_line_count += 1
     else:
         # Add proper ellipsis when we were able to fit a full line exactly
-        truncated_explanation[-1] = "..."
+        truncated_explanation[last_idx] = "..."
     return [
         *truncated_explanation,
         "",
