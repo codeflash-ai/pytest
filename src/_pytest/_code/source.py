@@ -145,19 +145,32 @@ def deindent(lines: Iterable[str]) -> List[str]:
 def get_statement_startend2(lineno: int, node: ast.AST) -> Tuple[int, Optional[int]]:
     # Flatten all statements and except handlers into one lineno-list.
     # AST's line numbers start indexing at 1.
-    values: List[int] = []
-    for x in ast.walk(node):
-        if isinstance(x, (ast.stmt, ast.ExceptHandler)):
+    append = values = []
+    decorator_types = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    stmt_types = (ast.stmt, ast.ExceptHandler)
+    # Copy ast.walk implementation locally for significant loop performance gain
+    todo = [node]
+    while todo:
+        x = todo.pop()
+        if isinstance(x, stmt_types):
             # The lineno points to the class/def, so need to include the decorators.
-            if isinstance(x, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(x, decorator_types):
                 for d in x.decorator_list:
-                    values.append(d.lineno - 1)
-            values.append(x.lineno - 1)
+                    append.append(d.lineno - 1)
+            append.append(x.lineno - 1)
             for name in ("finalbody", "orelse"):
-                val: Optional[List[ast.stmt]] = getattr(x, name, None)
+                val = getattr(x, name, None)
                 if val:
                     # Treat the finally/orelse part as its own statement.
-                    values.append(val[0].lineno - 1 - 1)
+                    append.append(val[0].lineno - 2)
+        # Use _fields directly to avoid generic walk recursion overhead
+        for field in getattr(x, "_fields", ()):
+            fieldval = getattr(x, field, None)
+            if isinstance(fieldval, list):
+                todo.extend(reversed(fieldval))
+            elif isinstance(fieldval, ast.AST):
+                todo.append(fieldval)
+
     values.sort()
     insert_index = bisect_right(values, lineno)
     start = values[insert_index - 1]
