@@ -455,7 +455,13 @@ def fnmatch_ex(pattern: str, path: Union[str, "os.PathLike[str]"]) -> bool:
 
 def parts(s: str) -> Set[str]:
     parts = s.split(sep)
-    return {sep.join(parts[: i + 1]) or sep for i in range(len(parts))}
+    result = set()
+    curr = parts[0]
+    result.add(curr or sep)
+    for part in parts[1:]:
+        curr = curr + sep + part
+        result.add(curr)
+    return result
 
 
 def symlink_or_skip(src, dst, **kwargs):
