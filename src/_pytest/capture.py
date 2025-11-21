@@ -356,7 +356,7 @@ class SysCaptureBase(CaptureBase[AnyStr]):
         return "<{} {} _old={} _state={!r} tmpfile={!r}>".format(
             class_name,
             self.name,
-            hasattr(self, "_old") and repr(self._old) or "<UNSET>",
+            (hasattr(self, "_old") and repr(self._old)) or "<UNSET>",
             self._state,
             self.tmpfile,
         )
@@ -365,16 +365,16 @@ class SysCaptureBase(CaptureBase[AnyStr]):
         return "<{} {} _old={} _state={!r} tmpfile={!r}>".format(
             self.__class__.__name__,
             self.name,
-            hasattr(self, "_old") and repr(self._old) or "<UNSET>",
+            (hasattr(self, "_old") and repr(self._old)) or "<UNSET>",
             self._state,
             self.tmpfile,
         )
 
     def _assert_state(self, op: str, states: Tuple[str, ...]) -> None:
-        assert (
-            self._state in states
-        ), "cannot {} in state {!r}: expected one of {}".format(
-            op, self._state, ", ".join(states)
+        assert self._state in states, (
+            "cannot {} in state {!r}: expected one of {}".format(
+                op, self._state, ", ".join(states)
+            )
         )
 
     def start(self) -> None:
@@ -467,15 +467,19 @@ class FDCaptureBase(CaptureBase[AnyStr]):
             self.tmpfile = open(os.devnull, encoding="utf-8")
             self.syscapture: CaptureBase[str] = SysCapture(targetfd)
         else:
-            self.tmpfile = EncodedFile(
-                TemporaryFile(buffering=0),
+            # TemporaryFile(buffering=0) always gives binary file; EncodedFile wraps in text mode.
+            # It's more efficient to reuse the result of TemporaryFile and EncodedFile only once.
+            tmp = TemporaryFile(buffering=0)
+            ef = EncodedFile(
+                tmp,
                 encoding="utf-8",
                 errors="replace",
                 newline="",
                 write_through=True,
             )
+            self.tmpfile = ef
             if targetfd in patchsysdict:
-                self.syscapture = SysCapture(targetfd, self.tmpfile)
+                self.syscapture = SysCapture(targetfd, ef)
             else:
                 self.syscapture = NoCapture(targetfd)
 
@@ -488,10 +492,8 @@ class FDCaptureBase(CaptureBase[AnyStr]):
         )
 
     def _assert_state(self, op: str, states: Tuple[str, ...]) -> None:
-        assert (
-            self._state in states
-        ), "cannot {} in state {!r}: expected one of {}".format(
-            op, self._state, ", ".join(states)
+        assert self._state in states, (
+            f"cannot {op} in state {self._state!r}: expected one of {', '.join(states)}"
         )
 
     def start(self) -> None:
@@ -566,10 +568,11 @@ class FDCapture(FDCaptureBase[str]):
 
     def snap(self) -> str:
         self._assert_state("snap", ("started", "suspended"))
-        self.tmpfile.seek(0)
-        res = self.tmpfile.read()
-        self.tmpfile.seek(0)
-        self.tmpfile.truncate()
+        tmp = self.tmpfile
+        tmp.seek(0)
+        res = tmp.read()
+        tmp.seek(0)
+        tmp.truncate()
         return res
 
     def writeorg(self, data: str) -> None:
