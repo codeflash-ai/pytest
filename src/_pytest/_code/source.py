@@ -26,6 +26,7 @@ class Source:
             self.lines: List[str] = []
         elif isinstance(obj, Source):
             self.lines = obj.lines
+            self._ast = getattr(obj, "_ast", None)
         elif isinstance(obj, (tuple, list)):
             self.lines = deindent(x.rstrip("\n") for x in obj)
         elif isinstance(obj, str):
@@ -97,7 +98,11 @@ class Source:
         which containing the given lineno."""
         if not (0 <= lineno < len(self)):
             raise IndexError("lineno out of range")
-        ast, start, end = getstatementrange_ast(lineno, self)
+        if not hasattr(self, "_ast") or self._ast is None:
+            ast, start, end = getstatementrange_ast(lineno, self)
+            self._ast = ast
+        else:
+            ast, start, end = getstatementrange_ast(lineno, self, astnode=self._ast)
         return start, end
 
     def deindent(self) -> "Source":
