@@ -44,6 +44,10 @@ class Checkers:
     def __init__(self, path):
         self.path = path
 
+        self._statcache = (
+            None  # Pre-initialize attribute to avoid repeated AttributeError
+        )
+
     def dotfile(self):
         return self.path.basename.startswith(".")
 
@@ -108,14 +112,17 @@ class Checkers:
     _statcache: Stat
 
     def _stat(self) -> Stat:
+        # Use a local variable for the stat cache to optimize attribute access
+        statcache = self._statcache
+        if statcache is not None:
+            return statcache
         try:
-            return self._statcache
-        except AttributeError:
-            try:
-                self._statcache = self.path.stat()
-            except error.ELOOP:
-                self._statcache = self.path.lstat()
-            return self._statcache
+            # Attempt to get stat; fallback to lstat if ELOOP
+            stat = self.path.stat()
+        except error.ELOOP:
+            stat = self.path.lstat()
+        self._statcache = stat
+        return stat
 
     def dir(self):
         return S_ISDIR(self._stat().mode)
