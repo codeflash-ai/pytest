@@ -6,6 +6,7 @@ from __future__ import annotations
 import atexit
 from contextlib import contextmanager
 import fnmatch
+import functools
 import importlib.util
 import io
 import os
@@ -411,6 +412,7 @@ class LocalPath:
             self.copy(target)
             self.remove()
 
+    @functools.cache
     def fnmatch(self, pattern):
         """Return true if the basename/fullname matches the glob-'pattern'.
 
