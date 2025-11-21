@@ -337,15 +337,15 @@ class Argument:
     def __repr__(self) -> str:
         args: List[str] = []
         if self._short_opts:
-            args += ["_short_opts: " + repr(self._short_opts)]
+            args.append("_short_opts: " + repr(self._short_opts))
         if self._long_opts:
-            args += ["_long_opts: " + repr(self._long_opts)]
-        args += ["dest: " + repr(self.dest)]
+            args.append("_long_opts: " + repr(self._long_opts))
+        args.append("dest: " + repr(self.dest))
         if hasattr(self, "type"):
-            args += ["type: " + repr(self.type)]
+            args.append("type: " + repr(self.type))
         if hasattr(self, "default"):
-            args += ["default: " + repr(self.default)]
-        return "Argument({})".format(", ".join(args))
+            args.append("default: " + repr(self.default))
+        return f"Argument({', '.join(args)})"
 
 
 class OptionGroup:
