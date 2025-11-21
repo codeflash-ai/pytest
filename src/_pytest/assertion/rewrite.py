@@ -57,7 +57,7 @@ assertstate_key = StashKey["AssertionState"]()
 
 # pytest caches rewritten pycs in pycache dirs
 PYTEST_TAG = f"{sys.implementation.cache_tag}-pytest-{version}"
-PYC_EXT = ".py" + (__debug__ and "c" or "o")
+PYC_EXT = ".py" + ((__debug__ and "c") or "o")
 PYC_TAIL = "." + PYTEST_TAG + PYC_EXT
 
 # Special marker that denotes we have just left a scope definition
@@ -471,7 +471,7 @@ def _should_repr_global_name(obj: object) -> bool:
 
 
 def _format_boolop(explanations: Iterable[str], is_or: bool) -> str:
-    explanation = "(" + (is_or and " or " or " and ").join(explanations) + ")"
+    explanation = "(" + ((is_or and " or ") or " and ").join(explanations) + ")"
     return explanation.replace("%", "%%")
 
 
@@ -481,13 +481,18 @@ def _call_reprcompare(
     expls: Sequence[str],
     each_obj: Sequence[object],
 ) -> str:
-    for i, res, expl in zip(range(len(ops)), results, expls):
+    # Use enumerate to save repeatedly calling range(len(...))
+    for i, (res, expl) in enumerate(zip(results, expls)):
         try:
-            done = not res
+            if not res:
+                break
         except Exception:
-            done = True
-        if done:
             break
+    else:
+        # If break never occurred, use the last index
+        # zip ends with the shortest, so i is set to last valid index
+        return expl
+
     if util._reprcompare is not None:
         custom = util._reprcompare(ops[i], each_obj[i], each_obj[i + 1])
         if custom is not None:
