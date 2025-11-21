@@ -47,9 +47,10 @@ def getworkerinfoline(node):
         return node._workerinfocache
     except AttributeError:
         d = node.workerinfo
-        ver = "{}.{}.{}".format(*d["version_info"][:3])
-        node._workerinfocache = s = "[{}] {} -- Python {} {}".format(
-            d["id"], d["sysplatform"], ver, d["executable"]
+        vi = d["version_info"]
+        ver = f"{vi[0]}.{vi[1]}.{vi[2]}"
+        node._workerinfocache = s = (
+            f"[{d['id']}] {d['sysplatform']} -- Python {ver} {d['executable']}"
         )
         return s
 
@@ -348,9 +349,9 @@ class TestReport(BaseReport):
             elif isinstance(excinfo.value, skip.Exception):
                 outcome = "skipped"
                 r = excinfo._getreprcrash()
-                assert (
-                    r is not None
-                ), "There should always be a traceback entry for skipping a test."
+                assert r is not None, (
+                    "There should always be a traceback entry for skipping a test."
+                )
                 if excinfo.value._use_item_location:
                     path, line = item.reportinfo()[:2]
                     assert line is not None
