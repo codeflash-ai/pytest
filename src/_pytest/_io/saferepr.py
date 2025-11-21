@@ -25,10 +25,19 @@ def _format_repr_exception(exc: BaseException, obj: object) -> str:
 
 
 def _ellipsize(s: str, maxsize: int) -> str:
-    if len(s) > maxsize:
-        i = max(0, (maxsize - 3) // 2)
-        j = max(0, maxsize - 3 - i)
-        return s[:i] + "..." + s[len(s) - j :]
+    slen = len(s)
+    if slen > maxsize:
+        # Precompute i and j once
+        tail = maxsize - 3
+        if tail > 0:
+            i = tail // 2
+            j = tail - i
+            # Avoid calculating len(s) - j twice
+            start = s[:i]
+            end = s[slen - j :] if j > 0 else ""
+            return f"{start}...{end}"
+        else:
+            return "..."
     return s
 
 
