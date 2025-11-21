@@ -20,6 +20,13 @@ from typing import NoReturn
 import py
 
 
+_iscoroutinefunction = inspect.iscoroutinefunction
+
+_isasyncgenfunction = inspect.isasyncgenfunction
+
+_getattr = getattr
+
+
 #: constant to prepare valuing pylib path replacements/lazy proxies later on
 #  intended for removal in pytest 8.0 or 9.0
 
@@ -63,7 +70,7 @@ def iscoroutinefunction(func: object) -> bool:
 def is_async_function(func: object) -> bool:
     """Return True if the given function seems to be an async function or
     an async generator."""
-    return iscoroutinefunction(func) or inspect.isasyncgenfunction(func)
+    return _iscoroutinefunction(func) or _isasyncgenfunction(func)
 
 
 def getlocation(function, curdir: str | os.PathLike[str] | None = None) -> str:
