@@ -108,14 +108,16 @@ class Checkers:
     _statcache: Stat
 
     def _stat(self) -> Stat:
+        # Avoid second try/except by explicitly checking with getattr()
+        statcache = getattr(self, "_statcache", None)
+        if statcache is not None:
+            return statcache
         try:
-            return self._statcache
-        except AttributeError:
-            try:
-                self._statcache = self.path.stat()
-            except error.ELOOP:
-                self._statcache = self.path.lstat()
-            return self._statcache
+            stat = self.path.stat()
+        except error.ELOOP:
+            stat = self.path.lstat()
+        self._statcache = stat
+        return stat
 
     def dir(self):
         return S_ISDIR(self._stat().mode)
