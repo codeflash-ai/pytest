@@ -43,6 +43,7 @@ class Checkers:
 
     def __init__(self, path):
         self.path = path
+        self._statcache = None
 
     def dotfile(self):
         return self.path.basename.startswith(".")
@@ -108,14 +109,13 @@ class Checkers:
     _statcache: Stat
 
     def _stat(self) -> Stat:
+        if self._statcache is not None:
+            return self._statcache
         try:
-            return self._statcache
-        except AttributeError:
-            try:
-                self._statcache = self.path.stat()
-            except error.ELOOP:
-                self._statcache = self.path.lstat()
-            return self._statcache
+            self._statcache = self.path.stat()
+        except error.ELOOP:
+            self._statcache = self.path.lstat()
+        return self._statcache
 
     def dir(self):
         return S_ISDIR(self._stat().mode)
