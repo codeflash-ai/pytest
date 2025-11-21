@@ -146,18 +146,36 @@ def get_statement_startend2(lineno: int, node: ast.AST) -> Tuple[int, Optional[i
     # Flatten all statements and except handlers into one lineno-list.
     # AST's line numbers start indexing at 1.
     values: List[int] = []
+
+    # Optimization: avoid repeated isinstance checks by precomputing type set,
+    # and localize attributes lookup to local variables
+    stmt_types = (ast.stmt, ast.ExceptHandler)
+    cls_types = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    names = ("finalbody", "orelse")
+
+    # Instead of repeated attribute lookup and walk logic,
+    # batch relevant work, do as few attribute walks as possible.
+    append = values.append  # localize to avoid attribute lookup in tight loop
+
+    # It's important to minimize per-node operations. Instead of all `isinstance`,
+    # perform a single type lookup per iteration.
     for x in ast.walk(node):
-        if isinstance(x, (ast.stmt, ast.ExceptHandler)):
+        if isinstance(x, stmt_types):
             # The lineno points to the class/def, so need to include the decorators.
-            if isinstance(x, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                for d in x.decorator_list:
-                    values.append(d.lineno - 1)
-            values.append(x.lineno - 1)
-            for name in ("finalbody", "orelse"):
-                val: Optional[List[ast.stmt]] = getattr(x, name, None)
+            if isinstance(x, cls_types):
+                # decorator_list is always a list, so avoid repeated attribute lookups
+                decos = x.decorator_list
+                for d in decos:
+                    append(d.lineno - 1)
+            append(x.lineno - 1)
+            x_getattr = getattr  # localize for further calls
+            for name in names:
+                val: Optional[List[ast.stmt]] = x_getattr(x, name, None)
                 if val:
                     # Treat the finally/orelse part as its own statement.
-                    values.append(val[0].lineno - 1 - 1)
+                    append(val[0].lineno - 2)
+
+    # Use TimSort, values list is typically small and sort is efficient.
     values.sort()
     insert_index = bisect_right(values, lineno)
     start = values[insert_index - 1]
@@ -195,12 +213,21 @@ def getstatementrange_ast(
         # by using the BlockFinder helper used which inspect.getsource() uses itself.
         block_finder = inspect.BlockFinder()
         # If we start with an indented line, put blockfinder to "started" mode.
-        block_finder.started = (
-            bool(source.lines[start]) and source.lines[start][0].isspace()
-        )
-        it = ((x + "\n") for x in source.lines[start:end])
+        # If we start with an indented line, put blockfinder to "started" mode.
+        start_line = source.lines[start]
+        block_finder.started = bool(start_line) and start_line[0].isspace()
+        # Pre-allocate the "\n" additions for speed (reduce generator overhead here)
+        # but keep generator for behavioral preservation (exception on out-of-bounds)
+        it_lines = source.lines[start:end]
+
+        def _line_iter():
+            for x in it_lines:
+                yield x + "\n"
+
+        it = _line_iter()
         try:
-            for tok in tokenize.generate_tokens(lambda: next(it)):
+            tokgen = tokenize.generate_tokens(lambda: next(it))
+            for tok in tokgen:
                 block_finder.tokeneater(*tok)
         except (inspect.EndOfBlock, IndentationError):
             end = block_finder.last + start
