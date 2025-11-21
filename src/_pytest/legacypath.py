@@ -381,7 +381,7 @@ def Config_inifile(self: Config) -> Optional[LEGACY_PATH]:
 
     :type: Optional[LEGACY_PATH]
     """
-    return legacy_path(str(self.inipath)) if self.inipath else None
+    return LEGACY_PATH(str(self.inipath)) if self.inipath else None
 
 
 def Session_stardir(self: Session) -> LEGACY_PATH:
