@@ -1358,10 +1358,10 @@ class TerminalReporter:
 
 def _get_node_id_with_markup(tw: TerminalWriter, config: Config, rep: BaseReport):
     nodeid = config.cwd_relative_nodeid(rep.nodeid)
-    path, *parts = nodeid.split("::")
+    path, sep, parts = nodeid.partition("::")
     if parts:
-        parts_markup = tw.markup("::".join(parts), bold=True)
-        return path + "::" + parts_markup
+        parts_markup = tw.markup(parts, bold=True)
+        return f"{path}{sep}{parts_markup}"
     else:
         return path
 
