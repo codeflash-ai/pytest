@@ -1,6 +1,7 @@
 # mypy: allow-untyped-defs
 import ast
 from bisect import bisect_right
+from functools import lru_cache
 import inspect
 import textwrap
 import tokenize
@@ -176,11 +177,7 @@ def getstatementrange_ast(
 ) -> Tuple[ast.AST, int, int]:
     if astnode is None:
         content = str(source)
-        # See #4260:
-        # Don't produce duplicate warnings when compiling source to find AST.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            astnode = ast.parse(content, "source", "exec")
+        astnode = _parse_ast_from_source(content)
 
     start, end = get_statement_startend2(lineno, astnode)
     # We need to correct the end:
@@ -198,9 +195,14 @@ def getstatementrange_ast(
         block_finder.started = (
             bool(source.lines[start]) and source.lines[start][0].isspace()
         )
-        it = ((x + "\n") for x in source.lines[start:end])
+        # Instead of generator expression, create a list for the slice up front for memory locality
+        lines_to_tokenize = source.lines[start:end]
+        # This generator is fast, don't rewrite using map or list unnecessarily
+        it = (line + "\n" for line in lines_to_tokenize)
         try:
-            for tok in tokenize.generate_tokens(lambda: next(it)):
+            # It's faster to avoid the lambda in tokenize.generate_tokens; use a local generator
+            it_next = it.__next__
+            for tok in tokenize.generate_tokens(it_next):
                 block_finder.tokeneater(*tok)
         except (inspect.EndOfBlock, IndentationError):
             end = block_finder.last + start
@@ -208,10 +210,21 @@ def getstatementrange_ast(
             pass
 
     # The end might still point to a comment or empty line, correct it.
+
+    # The end might still point to a comment or empty line, correct it.
+    # Mem-efficient: avoid repeated attr lookups for .lines
+    lines = source.lines
     while end:
-        line = source.lines[end - 1].lstrip()
+        line = lines[end - 1].lstrip()
         if line.startswith("#") or not line:
             end -= 1
         else:
             break
     return astnode, start, end
+
+
+@lru_cache(maxsize=128)
+def _parse_ast_from_source(source_text: str) -> ast.AST:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return ast.parse(source_text, "source", "exec")
