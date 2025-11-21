@@ -264,10 +264,7 @@ def get_real_method(obj, holder):
 
 
 def getimfunc(func):
-    try:
-        return func.__func__
-    except AttributeError:
-        return func
+    return getattr(func, "__func__", func)
 
 
 def safe_getattr(object: Any, name: str, default: Any) -> Any:
