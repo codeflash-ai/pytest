@@ -1,6 +1,17 @@
 from functools import lru_cache
 import unicodedata
 
+_Cf_Zp_Zl_SET = {
+    0x0000,
+    0x2028, 0x2029, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+    0x2060, 0x2061, 0x2062, 0x2063,
+    0x200B, 0x200C, 0x200D, 0x200E, 0x200F,
+}
+
+_COMBINING_CATEGORIES = {"Me", "Mn"}
+
+_EAWIDE = {"F", "W"}
+
 
 @lru_cache(100)
 def wcwidth(c: str) -> int:
@@ -16,12 +27,7 @@ def wcwidth(c: str) -> int:
         return 1
 
     # Some Cf/Zp/Zl characters which should be zero-width.
-    if (
-        o == 0x0000
-        or 0x200B <= o <= 0x200F
-        or 0x2028 <= o <= 0x202E
-        or 0x2060 <= o <= 0x2063
-    ):
+    if o in _Cf_Zp_Zl_SET:
         return 0
 
     category = unicodedata.category(c)
@@ -31,11 +37,11 @@ def wcwidth(c: str) -> int:
         return -1
 
     # Combining characters with zero width.
-    if category in ("Me", "Mn"):
+    if category in _COMBINING_CATEGORIES:
         return 0
 
     # Full/Wide east asian characters.
-    if unicodedata.east_asian_width(c) in ("F", "W"):
+    if unicodedata.east_asian_width(c) in _EAWIDE:
         return 2
 
     return 1
