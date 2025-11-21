@@ -50,6 +50,8 @@ if TYPE_CHECKING:
     import doctest
     from typing import Self
 
+_flag_lookup_cache = None
+
 DOCTEST_REPORT_CHOICE_NONE = "none"
 DOCTEST_REPORT_CHOICE_CDIFF = "cdiff"
 DOCTEST_REPORT_CHOICE_NDIFF = "ndiff"
@@ -298,7 +300,7 @@ class DoctestItem(Item):
     def runtest(self) -> None:
         _check_all_skipped(self.dtest)
         self._disable_output_capturing_for_darwin()
-        failures: List["doctest.DocTestFailure"] = []
+        failures: List[doctest.DocTestFailure] = []
         # Type ignored because we change the type of `out` from what
         # doctest expects.
         self.runner.run(self.dtest, out=failures)  # type: ignore[arg-type]
@@ -403,10 +405,12 @@ def _get_flag_lookup() -> Dict[str, int]:
 
 def get_optionflags(config: Config) -> int:
     optionflags_str = config.getini("doctest_optionflags")
-    flag_lookup_table = _get_flag_lookup()
+    global _flag_lookup_cache
+    if _flag_lookup_cache is None:
+        _flag_lookup_cache = _get_flag_lookup()
     flag_acc = 0
     for flag in optionflags_str:
-        flag_acc |= flag_lookup_table[flag]
+        flag_acc |= _flag_lookup_cache[flag]
     return flag_acc
 
 
