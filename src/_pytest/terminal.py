@@ -1502,15 +1502,13 @@ def _get_raw_skip_reason(report: TestReport) -> str:
     """
     if hasattr(report, "wasxfail"):
         reason = report.wasxfail
-        if reason.startswith("reason: "):
-            reason = reason[len("reason: ") :]
-        return reason
+        return reason.removeprefix("reason: ")
     else:
         assert report.skipped
         assert isinstance(report.longrepr, tuple)
         _, _, reason = report.longrepr
         if reason.startswith("Skipped: "):
-            reason = reason[len("Skipped: ") :]
+            return reason.removeprefix("Skipped: ")
         elif reason == "Skipped":
-            reason = ""
+            return ""
         return reason
