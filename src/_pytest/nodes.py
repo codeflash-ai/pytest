@@ -40,7 +40,6 @@ from _pytest.mark.structures import MarkDecorator
 from _pytest.mark.structures import NodeKeywords
 from _pytest.outcomes import fail
 from _pytest.pathlib import absolutepath
-from _pytest.pathlib import commonpath
 from _pytest.stash import Stash
 from _pytest.warning_types import PytestWarning
 
@@ -147,14 +146,14 @@ class Node(abc.ABC, metaclass=NodeMeta):
     # Use __slots__ to make attribute access faster.
     # Note that __dict__ is still available.
     __slots__ = (
-        "name",
-        "parent",
-        "config",
-        "session",
-        "path",
+        "__dict__",
         "_nodeid",
         "_store",
-        "__dict__",
+        "config",
+        "name",
+        "parent",
+        "path",
+        "session",
     )
 
     def __init__(
@@ -550,7 +549,7 @@ class Collector(Node, abc.ABC):
 
 def _check_initialpaths_for_relpath(session: "Session", path: Path) -> Optional[str]:
     for initial_path in session._initialpaths:
-        if commonpath(path, initial_path) == initial_path:
+        if path.is_relative_to(initial_path):
             rel = str(path.relative_to(initial_path))
             return "" if rel == "." else rel
     return None
