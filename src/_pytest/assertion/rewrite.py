@@ -57,7 +57,7 @@ assertstate_key = StashKey["AssertionState"]()
 
 # pytest caches rewritten pycs in pycache dirs
 PYTEST_TAG = f"{sys.implementation.cache_tag}-pytest-{version}"
-PYC_EXT = ".py" + (__debug__ and "c" or "o")
+PYC_EXT = ".py" + ((__debug__ and "c") or "o")
 PYC_TAIL = "." + PYTEST_TAG + PYC_EXT
 
 # Special marker that denotes we have just left a scope definition
@@ -241,9 +241,18 @@ class AssertionRewritingHook(importlib.abc.MetaPathFinder, importlib.abc.Loader)
         try:
             return self._marked_for_rewrite_cache[name]
         except KeyError:
-            for marked in self._must_rewrite:
-                if name == marked or name.startswith(marked + "."):
-                    state.trace(f"matched marked file {name!r} (from {marked!r})")
+            if not self._must_rewrite:
+                self._marked_for_rewrite_cache[name] = False
+                return False
+
+            name_parts = name.split(".")
+            prefixes = []
+            for i in range(1, len(name_parts) + 1):
+                prefixes.append(".".join(name_parts[:i]))
+
+            for prefix in prefixes:
+                if prefix in self._must_rewrite:
+                    state.trace(f"matched marked file {name!r} (from {prefix!r})")
                     self._marked_for_rewrite_cache[name] = True
                     return True
 
@@ -471,7 +480,7 @@ def _should_repr_global_name(obj: object) -> bool:
 
 
 def _format_boolop(explanations: Iterable[str], is_or: bool) -> str:
-    explanation = "(" + (is_or and " or " or " and ").join(explanations) + ")"
+    explanation = "(" + ((is_or and " or ") or " and ").join(explanations) + ")"
     return explanation.replace("%", "%%")
 
 
