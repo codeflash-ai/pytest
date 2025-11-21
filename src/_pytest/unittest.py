@@ -49,10 +49,13 @@ def pytest_pycollect_makeitem(
     # Has unittest been imported and is obj a subclass of its TestCase?
     try:
         ut = sys.modules["unittest"]
-        # Type ignored because `ut` is an opaque module.
-        if not issubclass(obj, ut.TestCase):  # type: ignore
+        # Only accept classes for issubclass(), avoids unnecessary exceptions.
+        if not isinstance(obj, type):
             return None
-    except Exception:
+        # Type ignored because `ut` is an opaque module.
+        if not issubclass(obj, getattr(ut, "TestCase", type)):  # type: ignore
+            return None
+    except (KeyError, TypeError):
         return None
     # Yes, so let's collect it.
     return UnitTestCase.from_parent(collector, name=name, obj=obj)
