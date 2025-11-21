@@ -32,6 +32,7 @@ import uuid
 import warnings
 
 from . import error
+from _pytest._code.source import getrawcode
 
 
 # Moved from local.py.
@@ -68,8 +69,6 @@ class Checkers:
         return str(self.path).endswith(arg)
 
     def _evaluate(self, kw):
-        from .._code.source import getrawcode
-
         for name, value in kw.items():
             invert = False
             meth = None
@@ -78,18 +77,22 @@ class Checkers:
             except AttributeError:
                 if name[:3] == "not":
                     invert = True
+                    base_name = name[3:]
                     try:
-                        meth = getattr(self, name[3:])
+                        meth = getattr(self, base_name)
                     except AttributeError:
                         pass
             if meth is None:
                 raise TypeError(f"no {name!r} checker available for {self.path!r}")
             try:
-                if getrawcode(meth).co_argcount > 1:
+                code_obj = getrawcode(meth)
+                if code_obj.co_argcount > 1:
                     if (not meth(value)) ^ invert:
                         return False
                 else:
-                    if bool(value) ^ bool(meth()) ^ invert:
+                    # Only call meth() once for efficiency
+                    meth_val = meth()
+                    if bool(value) ^ bool(meth_val) ^ invert:
                         return False
             except (error.ENOENT, error.ENOTDIR, error.EBUSY):
                 # EBUSY feels not entirely correct,
@@ -97,11 +100,11 @@ class Checkers:
                 # is not accessible in python
                 for name in self._depend_on_existence:
                     if name in kw:
-                        if kw.get(name):
+                        if kw[name]:
                             return False
-                    name = "not" + name
-                    if name in kw:
-                        if not kw.get(name):
+                    not_name = "not" + name
+                    if not_name in kw:
+                        if not kw[not_name]:
                             return False
         return True
 

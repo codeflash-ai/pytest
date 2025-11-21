@@ -127,13 +127,12 @@ def findsource(obj) -> Tuple[Optional[Source], int]:
 
 def getrawcode(obj: object, trycall: bool = True) -> types.CodeType:
     """Return code object for given function."""
-    try:
+    # Avoid catching exceptions for performance: use hasattr instead
+    if hasattr(obj, "__code__"):
         return obj.__code__  # type: ignore[attr-defined,no-any-return]
-    except AttributeError:
-        pass
     if trycall:
         call = getattr(obj, "__call__", None)
-        if call and not isinstance(obj, type):
+        if call is not None and not isinstance(obj, type):
             return getrawcode(call, trycall=False)
     raise TypeError(f"could not get code object for {obj!r}")
 
