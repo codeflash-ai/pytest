@@ -291,7 +291,7 @@ class FuncFixtureInfo:
     these are not reflected here.
     """
 
-    __slots__ = ("argnames", "initialnames", "names_closure", "name2fixturedefs")
+    __slots__ = ("argnames", "initialnames", "name2fixturedefs", "names_closure")
 
     # Fixture names that the item requests directly by function parameters.
     argnames: Tuple[str, ...]
@@ -746,7 +746,9 @@ class SubRequest(FixtureRequest):
         if node is None and scope is Scope.Class:
             # Fallback to function item itself.
             node = self._pyfuncitem
-        assert node, f'Could not obtain a node for scope "{scope}" for function {self._pyfuncitem!r}'
+        assert node, (
+            f'Could not obtain a node for scope "{scope}" for function {self._pyfuncitem!r}'
+        )
         return node
 
     def _check_scope(
@@ -1091,14 +1093,17 @@ def resolve_fixture_function(
     if instance is not None:
         # Handle the case where fixture is defined not in a test class, but some other class
         # (for example a plugin class with a fixture), see #2270.
-        if hasattr(fixturefunc, "__self__") and not isinstance(
+        func_self = getattr(fixturefunc, "__self__", None)
+        if func_self is not None and not isinstance(
             instance,
-            fixturefunc.__self__.__class__,
+            type(func_self),
         ):
             return fixturefunc
-        fixturefunc = getimfunc(fixturedef.func)
-        if fixturefunc != fixturedef.func:
-            fixturefunc = fixturefunc.__get__(instance)
+        newfixturefunc = getimfunc(fixturedef.func)
+        if newfixturefunc != fixturedef.func:
+            fixturefunc = newfixturefunc.__get__(instance)
+        else:
+            fixturefunc = newfixturefunc
     return fixturefunc
 
 
