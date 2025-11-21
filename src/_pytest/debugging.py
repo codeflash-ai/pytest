@@ -35,12 +35,13 @@ if TYPE_CHECKING:
 
 def _validate_usepdb_cls(value: str) -> Tuple[str, str]:
     """Validate syntax of --pdbcls option."""
-    try:
-        modname, classname = value.split(":")
-    except ValueError as e:
+    # Check for exactly one colon to avoid exception handling overhead
+    colon_count = value.count(":")
+    if colon_count != 1:
         raise argparse.ArgumentTypeError(
             f"{value!r} is not in the format 'modname:classname'"
-        ) from e
+        )
+    modname, classname = value.split(":", 1)
     return (modname, classname)
 
 
