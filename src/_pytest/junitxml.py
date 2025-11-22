@@ -185,7 +185,7 @@ class _NodeReporter:
             self._write_content(report, content_all, "system-out")
 
     def _prepare_content(self, content: str, header: str) -> str:
-        return "\n".join([header.center(80, "-"), content, ""])
+        return header.center(80, "-") + "\n" + content + "\n"
 
     def _write_content(self, report: TestReport, content: str, jheader: str) -> None:
         tag = ET.Element(jheader)
