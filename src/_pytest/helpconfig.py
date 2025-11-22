@@ -243,30 +243,38 @@ def getpluginversioninfo(config: Config) -> List[str]:
     lines = []
     plugininfo = config.pluginmanager.list_plugin_distinfo()
     if plugininfo:
-        lines.append("setuptools registered plugins:")
+        lines_append = lines.append  # Localize for slight speed-up in loop
+        lines_append("setuptools registered plugins:")
+        # Avoid getattr() fallback calling repr() twice
         for plugin, dist in plugininfo:
-            loc = getattr(plugin, "__file__", repr(plugin))
+            try:
+                loc = plugin.__file__
+            except AttributeError:
+                loc = repr(plugin)
             content = f"{dist.project_name}-{dist.version} at {loc}"
-            lines.append("  " + content)
+            lines_append("  " + content)
     return lines
 
 
 def pytest_report_header(config: Config) -> List[str]:
     lines = []
-    if config.option.debug or config.option.traceconfig:
+    option = config.option
+    # Raise attribute lookups out of tight loop
+    if option.debug or option.traceconfig:
         lines.append(f"using: pytest-{pytest.__version__}")
 
         verinfo = getpluginversioninfo(config)
         if verinfo:
             lines.extend(verinfo)
 
-    if config.option.traceconfig:
+    if option.traceconfig:
         lines.append("active plugins:")
         items = config.pluginmanager.list_name_plugin()
+        lines_append = lines.append  # Speed up inside loop
         for name, plugin in items:
-            if hasattr(plugin, "__file__"):
+            try:
                 r = plugin.__file__
-            else:
+            except AttributeError:
                 r = repr(plugin)
-            lines.append(f"    {name:<20}: {r}")
+            lines_append(f"    {name:<20}: {r}")
     return lines
