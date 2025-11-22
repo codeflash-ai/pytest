@@ -1484,9 +1484,9 @@ class Config:
 
     def parse(self, args: List[str], addopts: bool = True) -> None:
         # Parse given cmdline arguments into this config object.
-        assert (
-            self.args == []
-        ), "can only parse cmdline args at most once per Config object"
+        assert self.args == [], (
+            "can only parse cmdline args at most once per Config object"
+        )
         self.hook.pytest_addhooks.call_historic(
             kwargs=dict(pluginmanager=self.pluginmanager)
         )
@@ -1811,12 +1811,7 @@ class Config:
 
 
 def _assertion_supported() -> bool:
-    try:
-        assert False
-    except AssertionError:
-        return True
-    else:
-        return False  # type: ignore[unreachable]
+    return __debug__
 
 
 def create_terminal_writer(
@@ -1906,7 +1901,7 @@ def parse_warning_filter(
         parts.append("")
     action_, message, category_, module, lineno_ = (s.strip() for s in parts)
     try:
-        action: "warnings._ActionKind" = warnings._getaction(action_)  # type: ignore[attr-defined]
+        action: warnings._ActionKind = warnings._getaction(action_)  # type: ignore[attr-defined]
     except warnings._OptionError as e:
         raise UsageError(error_template.format(error=str(e))) from None
     try:
