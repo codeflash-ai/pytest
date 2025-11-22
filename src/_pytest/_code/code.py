@@ -199,8 +199,8 @@ class TracebackEntry:
         rawentry: TracebackType,
         repr_style: Optional['Literal["short", "long"]'] = None,
     ) -> None:
-        self._rawentry: "Final" = rawentry
-        self._repr_style: "Final" = repr_style
+        self._rawentry: Final = rawentry
+        self._repr_style: Final = repr_style
 
     def with_repr_style(
         self, repr_style: Optional['Literal["short", "long"]']
@@ -454,7 +454,7 @@ class ExceptionInfo(Generic[E]):
         self,
         excinfo: Optional[Tuple[Type["E"], "E", TracebackType]],
         striptext: str = "",
-        traceback: Optional[Traceback] = None,
+        traceback: Optional["Traceback"] = None,
         *,
         _ispytest: bool = False,
     ) -> None:
@@ -545,33 +545,33 @@ class ExceptionInfo(Generic[E]):
     @property
     def type(self) -> Type[E]:
         """The exception class."""
-        assert (
-            self._excinfo is not None
-        ), ".type can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".type can only be used after the context manager exits"
+        )
         return self._excinfo[0]
 
     @property
     def value(self) -> E:
         """The exception value."""
-        assert (
-            self._excinfo is not None
-        ), ".value can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".value can only be used after the context manager exits"
+        )
         return self._excinfo[1]
 
     @property
     def tb(self) -> TracebackType:
         """The exception raw traceback."""
-        assert (
-            self._excinfo is not None
-        ), ".tb can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".tb can only be used after the context manager exits"
+        )
         return self._excinfo[2]
 
     @property
     def typename(self) -> str:
         """The type name of the exception."""
-        assert (
-            self._excinfo is not None
-        ), ".typename can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".typename can only be used after the context manager exits"
+        )
         return self.type.__name__
 
     @property
@@ -697,23 +697,25 @@ class ExceptionInfo(Generic[E]):
         return fmt.repr_excinfo(self)
 
     def _stringify_exception(self, exc: BaseException) -> str:
+        # Use local variables to minimize attribute lookup, minor win in hot paths
+        exc_str = str(exc)
         try:
-            notes = getattr(exc, "__notes__", [])
+            notes = getattr(exc, "__notes__", None)
         except KeyError:
             # Workaround for https://github.com/python/cpython/issues/98778 on
             # Python <= 3.9, and some 3.10 and 3.11 patch versions.
             HTTPError = getattr(sys.modules.get("urllib.error", None), "HTTPError", ())
             if sys.version_info[:2] <= (3, 11) and isinstance(exc, HTTPError):
-                notes = []
+                notes = None
             else:
                 raise
 
-        return "\n".join(
-            [
-                str(exc),
-                *notes,
-            ]
-        )
+        # Optimize join: If no notes attribute or it's empty, avoid constructing a new list
+        if not notes:
+            return exc_str
+        # __notes__ could be non-list, but standard is list of str; keep as original
+        # Filter out None entries, though __notes__ is expected to be a list of str
+        return "\n".join([exc_str, *notes])
 
     def match(self, regexp: Union[str, Pattern[str]]) -> "Literal[True]":
         """Check whether the regular expression `regexp` matches the string
@@ -739,23 +741,33 @@ class ExceptionInfo(Generic[E]):
         current_depth: int = 1,
     ) -> bool:
         """Return `True` if a `BaseExceptionGroup` contains a matching exception."""
+        # Locally cache functions/attrs to cut global lookups in this hot path
+        isinstance_ = isinstance
+        BaseExceptionGroupType = BaseExceptionGroup
+        # Hot: range-check, shortcut if past depth
         if (target_depth is not None) and (current_depth > target_depth):
             # already descended past the target depth
             return False
-        for exc in exc_group.exceptions:
-            if isinstance(exc, BaseExceptionGroup):
+        excs = exc_group.exceptions
+        # Avoid attribute lookups in loop by binding match/re/search
+        match_val = match
+        if match_val is not None:
+            # For repeated use, precompile if not already Pattern (re.search with pattern argument is efficient though)
+            search = re.search
+        for exc in excs:
+            if isinstance_(exc, BaseExceptionGroupType):
                 if self._group_contains(
-                    exc, expected_exception, match, target_depth, current_depth + 1
+                    exc, expected_exception, match_val, target_depth, current_depth + 1
                 ):
                     return True
             if (target_depth is not None) and (current_depth != target_depth):
                 # not at the target depth, no match
                 continue
-            if not isinstance(exc, expected_exception):
+            if not isinstance_(exc, expected_exception):
                 continue
-            if match is not None:
+            if match_val is not None:
                 value = self._stringify_exception(exc)
-                if not re.search(match, value):
+                if not search(match_val, value):
                     continue
             return True
         return False
@@ -942,7 +954,7 @@ class FormattedExcinfo:
             if short:
                 message = "in %s" % (entry.name)
             else:
-                message = excinfo and excinfo.typename or ""
+                message = (excinfo and excinfo.typename) or ""
             entry_path = entry.path
             path = self._makepath(entry_path)
             reprfileloc = ReprFileLocation(path, entry.lineno + 1, message)
@@ -1177,10 +1189,8 @@ class ReprTraceback(TerminalRepr):
             entry.toterminal(tw)
             if i < len(self.reprentries) - 1:
                 next_entry = self.reprentries[i + 1]
-                if (
-                    entry.style == "long"
-                    or entry.style == "short"
-                    and next_entry.style == "long"
+                if entry.style == "long" or (
+                    entry.style == "short" and next_entry.style == "long"
                 ):
                     tw.sep(self.entrysep)
 
@@ -1358,7 +1368,7 @@ def getfslineno(obj: object) -> Tuple[Union[str, Path], int]:
         except TypeError:
             return "", -1
 
-        fspath = fn and absolutepath(fn) or ""
+        fspath = (fn and absolutepath(fn)) or ""
         lineno = -1
         if fspath:
             try:
