@@ -39,21 +39,37 @@ def _compare_approx(
     max_abs_diff: float,
     max_rel_diff: float,
 ) -> List[str]:
-    message_list = list(message_data)
-    message_list.insert(0, ("Index", "Obtained", "Expected"))
-    max_sizes = [0, 0, 0]
-    for index, obtained, expected in message_list:
-        max_sizes[0] = max(max_sizes[0], len(index))
-        max_sizes[1] = max(max_sizes[1], len(obtained))
-        max_sizes[2] = max(max_sizes[2], len(expected))
+    # Directly concatenate to avoid double-copies
+    message_list = [("Index", "Obtained", "Expected")]
+    message_list.extend(message_data)
+
+    # Precompute string lengths in a single pass and unpack
+    # This reduces attribute lookups inside the loop
+    max0 = max1 = max2 = 0
+    for tpl in message_list:
+        idx, obt, exp = tpl
+        l0, l1, l2 = len(idx), len(obt), len(exp)
+        if l0 > max0:
+            max0 = l0
+        if l1 > max1:
+            max1 = l1
+        if l2 > max2:
+            max2 = l2
+    max_sizes = [max0, max1, max2]
+
+    # Precompute header lines
     explanation = [
         f"comparison failed. Mismatched elements: {len(different_ids)} / {number_of_elements}:",
         f"Max absolute difference: {max_abs_diff}",
         f"Max relative difference: {max_rel_diff}",
-    ] + [
-        f"{indexes:<{max_sizes[0]}} | {obtained:<{max_sizes[1]}} | {expected:<{max_sizes[2]}}"
-        for indexes, obtained, expected in message_list
     ]
+
+    # Use local variables for format fields for slightly less lookup overhead; also moves repeated lookups out of the loop
+    n0, n1, n2 = max_sizes
+    fmt = f"{{0:<{n0}}} | {{1:<{n1}}} | {{2:<{n2}}}"
+
+    # Use list comprehension with unpacked tuple for faster formatting
+    explanation.extend([fmt.format(idx, obt, exp) for idx, obt, exp in message_list])
     return explanation
 
 
@@ -238,7 +254,7 @@ class ApproxMapping(ApproxBase):
     with numeric values (the keys can be anything)."""
 
     def __repr__(self) -> str:
-        return f"approx({({k: self._approx_scalar(v) for k, v in self.expected.items()})!r})"
+        return f"approx({ ({k: self._approx_scalar(v) for k, v in self.expected.items()})!r})"
 
     def _repr_compare(self, other_side: Mapping[object, float]) -> List[str]:
         import math
@@ -844,7 +860,9 @@ def raises(
 
        Given that ``pytest.raises`` matches subclasses, be wary of using it to match :class:`Exception` like this::
 
-           with pytest.raises(Exception):  # Careful, this will catch ANY exception raised.
+           with pytest.raises(
+               Exception
+           ):  # Careful, this will catch ANY exception raised.
                some_function()
 
        Because :class:`Exception` is the base class of almost all exceptions, it is easy for this to hide
