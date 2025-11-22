@@ -239,11 +239,14 @@ def deselect_by_mark(items: "List[Item]", config: Config) -> None:
     expr = _parse_expression(matchexpr, "Wrong expression passed to '-m'")
     remaining: List[Item] = []
     deselected: List[Item] = []
+    remaining_append = remaining.append
+    deselected_append = deselected.append
+
     for item in items:
         if expr.evaluate(MarkMatcher.from_item(item)):
-            remaining.append(item)
+            remaining_append(item)
         else:
-            deselected.append(item)
+            deselected_append(item)
     if deselected:
         config.hook.pytest_deselected(items=deselected)
         items[:] = remaining

@@ -28,6 +28,9 @@ from typing import Optional
 from typing import Sequence
 
 
+_EMPTY_BUILTINS = {"__builtins__": {}}
+
+
 __all__ = [
     "Expression",
     "ParseError",
@@ -46,7 +49,7 @@ class TokenType(enum.Enum):
 
 @dataclasses.dataclass(frozen=True)
 class Token:
-    __slots__ = ("type", "value", "pos")
+    __slots__ = ("pos", "type", "value")
     type: TokenType
     value: str
     pos: int
@@ -68,7 +71,7 @@ class ParseError(Exception):
 
 
 class Scanner:
-    __slots__ = ("tokens", "current")
+    __slots__ = ("current", "tokens")
 
     def __init__(self, input: str) -> None:
         self.tokens = self.lex(input)
@@ -219,5 +222,5 @@ class Expression:
 
         :returns: Whether the expression matches or not.
         """
-        ret: bool = eval(self.code, {"__builtins__": {}}, MatcherAdapter(matcher))
+        ret: bool = eval(self.code, _EMPTY_BUILTINS, MatcherAdapter(matcher))
         return ret
