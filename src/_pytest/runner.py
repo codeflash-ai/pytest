@@ -251,13 +251,14 @@ def call_and_report(
 def check_interactive_exception(call: "CallInfo[object]", report: BaseReport) -> bool:
     """Check whether the call raised an exception that should be reported as
     interactive."""
-    if call.excinfo is None:
+    excinfo = call.excinfo
+    if excinfo is None:
         # Didn't raise.
         return False
-    if hasattr(report, "wasxfail"):
+    if "wasxfail" in report.__dict__:
         # Exception was expected.
         return False
-    if isinstance(call.excinfo.value, (Skipped, bdb.BdbQuit)):
+    if isinstance(excinfo.value, (Skipped, bdb.BdbQuit)):
         # Special control flow exception.
         return False
     return True
@@ -531,7 +532,7 @@ class SetupState:
         When nextitem is None (meaning we're at the last item), the entire
         stack is torn down.
         """
-        needed_collectors = nextitem and nextitem.listchain() or []
+        needed_collectors = (nextitem and nextitem.listchain()) or []
         exceptions: List[BaseException] = []
         while self.stack:
             if list(self.stack.keys()) == needed_collectors[: len(self.stack)]:
@@ -564,6 +565,10 @@ def collect_one_node(collector: Collector) -> CollectReport:
     ihook.pytest_collectstart(collector=collector)
     rep: CollectReport = ihook.pytest_make_collect_report(collector=collector)
     call = rep.__dict__.pop("call", None)
-    if call and check_interactive_exception(call, rep):
-        ihook.pytest_exception_interact(node=collector, call=call, report=rep)
+    # Avoid calling check_interactive_exception unless call is not None
+    if call is not None:
+        # Inline call to avoid retesting conditions if check_interactive_exception is fast
+        # (still call the function for behavior preservation)
+        if check_interactive_exception(call, rep):
+            ihook.pytest_exception_interact(node=collector, call=call, report=rep)
     return rep
