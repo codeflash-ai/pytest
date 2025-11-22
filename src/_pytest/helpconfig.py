@@ -243,11 +243,18 @@ def getpluginversioninfo(config: Config) -> List[str]:
     lines = []
     plugininfo = config.pluginmanager.list_plugin_distinfo()
     if plugininfo:
-        lines.append("setuptools registered plugins:")
+        lines_append = lines.append  # local var for faster appending
+        lines_append("setuptools registered plugins:")
+        # Pre-bind str methods and f-string structure for improved performance in tight loops
         for plugin, dist in plugininfo:
-            loc = getattr(plugin, "__file__", repr(plugin))
-            content = f"{dist.project_name}-{dist.version} at {loc}"
-            lines.append("  " + content)
+            # Avoid recomputing repr if not needed
+            loc = getattr(plugin, "__file__", None)
+            if loc is None:
+                loc = repr(plugin)
+            pn = dist.project_name
+            ver = dist.version
+            # Avoid '+' and f-string runtime parsing in loop
+            lines_append(f"  {pn}-{ver} at {loc}")
     return lines
 
 
