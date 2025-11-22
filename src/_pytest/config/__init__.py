@@ -2,6 +2,7 @@
 """Command line options, ini-file and conftest.py processing."""
 
 import argparse
+import builtins as _builtins
 import collections.abc
 import copy
 import dataclasses
@@ -15,7 +16,6 @@ from pathlib import Path
 import re
 import shlex
 import sys
-from textwrap import dedent
 import types
 from types import FunctionType
 from typing import Any
@@ -1484,9 +1484,9 @@ class Config:
 
     def parse(self, args: List[str], addopts: bool = True) -> None:
         # Parse given cmdline arguments into this config object.
-        assert (
-            self.args == []
-        ), "can only parse cmdline args at most once per Config object"
+        assert self.args == [], (
+            "can only parse cmdline args at most once per Config object"
+        )
         self.hook.pytest_addhooks.call_historic(
             kwargs=dict(pluginmanager=self.pluginmanager)
         )
@@ -1874,39 +1874,33 @@ def parse_warning_filter(
     * Raises UsageError so we get nice error messages on failure.
     """
     __tracebackhide__ = True
-    error_template = dedent(
-        f"""\
-        while parsing the following warning configuration:
 
-          {arg}
-
-        This error occurred:
-
-        {{error}}
-        """
+    arg_str = arg
+    error_template = (
+        "while parsing the following warning configuration:\n\n"
+        f"  {arg_str}\n\n"
+        "This error occurred:\n\n"
+        "{error}\n"
     )
 
     parts = arg.split(":")
-    if len(parts) > 5:
+    nparts = len(parts)
+    if nparts > 5:
         doc_url = (
             "https://docs.python.org/3/library/warnings.html#describing-warning-filters"
         )
-        error = dedent(
-            f"""\
-            Too many fields ({len(parts)}), expected at most 5 separated by colons:
-
-              action:message:category:module:line
-
-            For more information please consult: {doc_url}
-            """
+        error = (
+            f"Too many fields ({nparts}), expected at most 5 separated by colons:\n\n"
+            "  action:message:category:module:line\n\n"
+            f"For more information please consult: {doc_url}\n"
         )
         raise UsageError(error_template.format(error=error))
 
-    while len(parts) < 5:
-        parts.append("")
+    if nparts < 5:
+        parts += [""] * (5 - nparts)
     action_, message, category_, module, lineno_ = (s.strip() for s in parts)
     try:
-        action: "warnings._ActionKind" = warnings._getaction(action_)  # type: ignore[attr-defined]
+        action: warnings._ActionKind = warnings._getaction(action_)  # type: ignore[attr-defined]
     except warnings._OptionError as e:
         raise UsageError(error_template.format(error=str(e))) from None
     try:
@@ -1943,12 +1937,12 @@ def _resolve_warning_category(category: str) -> Type[Warning]:
         return Warning
 
     if "." not in category:
-        import builtins as m
+        m = _builtins
 
         klass = category
     else:
         module, _, klass = category.rpartition(".")
-        m = __import__(module, None, None, [klass])
+        m = __import__(module, None, None, (klass,))
     cat = getattr(m, klass)
     if not issubclass(cat, Warning):
         raise UsageError(f"{cat} is not a Warning subclass")
