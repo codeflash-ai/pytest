@@ -39,21 +39,33 @@ def _compare_approx(
     max_abs_diff: float,
     max_rel_diff: float,
 ) -> List[str]:
-    message_list = list(message_data)
+    # Convert message_data to a list only if not already a list, for potential downstream usage
+    if not isinstance(message_data, list):
+        message_list = list(message_data)
+    else:
+        message_list = message_data
     message_list.insert(0, ("Index", "Obtained", "Expected"))
-    max_sizes = [0, 0, 0]
+    # Leverage a single iteration to compute column max widths
+    max0, max1, max2 = 0, 0, 0
     for index, obtained, expected in message_list:
-        max_sizes[0] = max(max_sizes[0], len(index))
-        max_sizes[1] = max(max_sizes[1], len(obtained))
-        max_sizes[2] = max(max_sizes[2], len(expected))
+        l0, l1, l2 = len(index), len(obtained), len(expected)
+        if l0 > max0:
+            max0 = l0
+        if l1 > max1:
+            max1 = l1
+        if l2 > max2:
+            max2 = l2
+    max_sizes = (max0, max1, max2)
+    # Preallocate list with the exact required size to avoid repeated resizing
     explanation = [
         f"comparison failed. Mismatched elements: {len(different_ids)} / {number_of_elements}:",
         f"Max absolute difference: {max_abs_diff}",
         f"Max relative difference: {max_rel_diff}",
-    ] + [
-        f"{indexes:<{max_sizes[0]}} | {obtained:<{max_sizes[1]}} | {expected:<{max_sizes[2]}}"
-        for indexes, obtained, expected in message_list
     ]
+    append = explanation.append  # Local var for faster repeated access
+    fmt = f"{{0:<{max0}}} | {{1:<{max1}}} | {{2:<{max2}}}"
+    for indexes, obtained, expected in message_list:
+        append(fmt.format(indexes, obtained, expected))
     return explanation
 
 
@@ -238,43 +250,62 @@ class ApproxMapping(ApproxBase):
     with numeric values (the keys can be anything)."""
 
     def __repr__(self) -> str:
-        return f"approx({({k: self._approx_scalar(v) for k, v in self.expected.items()})!r})"
+        return f"approx({ ({k: self._approx_scalar(v) for k, v in self.expected.items()})!r})"
 
     def _repr_compare(self, other_side: Mapping[object, float]) -> List[str]:
         import math
 
-        approx_side_as_map = {
-            k: self._approx_scalar(v) for k, v in self.expected.items()
-        }
+        expected_items = self.expected.items()
+        # Avoid repeated attribute lookups, build local references
+        rel = self.rel
+        abs_ = self.abs
+        nan_ok = self.nan_ok
+
+        # This dict comp is expensive; we can specialize the _approx_scalar call loop for performance
+        approx_side_as_map = {}
+        append_scalar = approx_side_as_map.__setitem__
+        for k, v in expected_items:
+            # Use type(x) for Decimal fast-path as in _approx_scalar
+            if type(v) is Decimal:
+                append_scalar(k, ApproxDecimal(v, rel=rel, abs=abs_, nan_ok=nan_ok))
+            else:
+                append_scalar(k, ApproxScalar(v, rel=rel, abs=abs_, nan_ok=nan_ok))
 
         number_of_elements = len(approx_side_as_map)
         max_abs_diff = -math.inf
         max_rel_diff = -math.inf
         different_ids = []
-        for (approx_key, approx_value), other_value in zip(
-            approx_side_as_map.items(), other_side.values()
+        # Use tuples for items/values iteration to avoid repeated .values() calls and attribute lookups
+        approx_items = list(approx_side_as_map.items())
+        other_values = list(other_side.values())
+        mismatches = []
+        for i, ((approx_key, approx_value), other_value) in enumerate(
+            zip(approx_items, other_values)
         ):
             if approx_value != other_value:
                 if approx_value.expected is not None and other_value is not None:
-                    max_abs_diff = max(
-                        max_abs_diff, abs(approx_value.expected - other_value)
-                    )
-                    if approx_value.expected == 0.0:
+                    abs_diff = abs(approx_value.expected - other_value)
+                    if abs_diff > max_abs_diff:
+                        max_abs_diff = abs_diff
+                    expected_val = approx_value.expected
+                    if expected_val == 0.0:
                         max_rel_diff = math.inf
                     else:
-                        max_rel_diff = max(
-                            max_rel_diff,
-                            abs(
-                                (approx_value.expected - other_value)
-                                / approx_value.expected
-                            ),
-                        )
+                        rel_diff = abs(abs_diff / expected_val)
+                        if rel_diff > max_rel_diff:
+                            max_rel_diff = rel_diff
                 different_ids.append(approx_key)
 
-        message_data = [
-            (str(key), str(other_side[key]), str(approx_side_as_map[key]))
-            for key in different_ids
-        ]
+        # Efficiently build message_data
+        if different_ids:
+            append_msg = []
+            get_other = other_side.__getitem__
+            get_approx = approx_side_as_map.__getitem__
+            for key in different_ids:
+                append_msg.append((str(key), str(get_other(key)), str(get_approx(key))))
+            message_data = append_msg
+        else:
+            message_data = []
 
         return _compare_approx(
             self.expected,
@@ -844,7 +875,9 @@ def raises(
 
        Given that ``pytest.raises`` matches subclasses, be wary of using it to match :class:`Exception` like this::
 
-           with pytest.raises(Exception):  # Careful, this will catch ANY exception raised.
+           with pytest.raises(
+               Exception
+           ):  # Careful, this will catch ANY exception raised.
                some_function()
 
        Because :class:`Exception` is the base class of almost all exceptions, it is easy for this to hide
