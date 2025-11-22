@@ -178,6 +178,9 @@ def showhelp(config: Config) -> None:
     columns = tw.fullwidth  # costly call
     indent_len = 24  # based on argparse's max_help_position=24
     indent = " " * indent_len
+
+    # Cache wrapped help text and indentation string for performance
+    wrap_cache = {}
     for name in config._parser._ininames:
         help, type, default = config._parser._inidict[name]
         if type is None:
@@ -190,25 +193,38 @@ def showhelp(config: Config) -> None:
         if spec_len > (indent_len - 3):
             # Display help starting at a new line.
             tw.line()
-            helplines = textwrap.wrap(
-                help,
-                columns,
-                initial_indent=indent,
-                subsequent_indent=indent,
-                break_on_hyphens=False,
-            )
+            cache_key = (help, columns)
+            if cache_key in wrap_cache:
+                helplines = wrap_cache[cache_key]
+            else:
+                helplines = textwrap.wrap(
+                    help,
+                    columns,
+                    initial_indent=indent,
+                    subsequent_indent=indent,
+                    break_on_hyphens=False,
+                )
+                wrap_cache[cache_key] = helplines
 
             for line in helplines:
                 tw.line(line)
         else:
             # Display help starting after the spec, following lines indented.
             tw.write(" " * (indent_len - spec_len - 2))
-            wrapped = textwrap.wrap(help, columns - indent_len, break_on_hyphens=False)
+            cache_key = (help, columns - indent_len)
+            if cache_key in wrap_cache:
+                wrapped = wrap_cache[cache_key]
+            else:
+                wrapped = textwrap.wrap(
+                    help, columns - indent_len, break_on_hyphens=False
+                )
+                wrap_cache[cache_key] = wrapped
 
             if wrapped:
                 tw.line(wrapped[0])
+                ind_str = indent  # Indentation string already computed
                 for line in wrapped[1:]:
-                    tw.line(indent + line)
+                    tw.line(ind_str + line)
 
     tw.line()
     tw.line("Environment variables:")
