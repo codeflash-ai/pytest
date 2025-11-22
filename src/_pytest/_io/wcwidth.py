@@ -2,6 +2,22 @@ from functools import lru_cache
 import unicodedata
 
 
+_EAW_CACHE = {"F", "W"}
+
+_ucd_category = unicodedata.category
+
+_ucd_eaw = unicodedata.east_asian_width
+
+_ucd_normalize = unicodedata.normalize
+
+_ZERO_WIDTH_CODES = (
+    {0x0000}
+    | set(range(0x200B, 0x2010))  # [0x200B, 0x200F]
+    | set(range(0x2028, 0x202F))  # [0x2028, 0x202E]
+    | set(range(0x2060, 0x2064))  # [0x2060, 0x2063]
+)
+
+
 @lru_cache(100)
 def wcwidth(c: str) -> int:
     """Determine how many columns are needed to display a character in a terminal.
@@ -47,8 +63,8 @@ def wcswidth(s: str) -> int:
     Returns -1 if the string contains non-printable characters.
     """
     width = 0
-    for c in unicodedata.normalize("NFC", s):
-        wc = wcwidth(c)
+    it = map(wcwidth, _ucd_normalize("NFC", s))
+    for wc in it:
         if wc < 0:
             return -1
         width += wc
