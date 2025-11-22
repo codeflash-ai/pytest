@@ -159,25 +159,30 @@ class KeywordMatcher:
         # interesting for matching.
         import pytest
 
+        Session = pytest.Session
+        Directory = pytest.Directory
+
+        # Collect node names, skipping Session and root Directory with Session parent
         for node in item.listchain():
-            if isinstance(node, pytest.Session):
+            if type(node) is Session:
                 continue
-            if isinstance(node, pytest.Directory) and isinstance(
-                node.parent, pytest.Session
-            ):
+            if type(node) is Directory and type(node.parent) is Session:
                 continue
             mapped_names.add(node.name)
 
-        # Add the names added as extra keywords to current or parent items.
-        mapped_names.update(item.listextrakeywords())
+        # Batch update from all extra keywords and marker names
+        extra_keywords = item.listextrakeywords()
+        # Add the names attached to the current function through direct assignment.
 
         # Add the names attached to the current function through direct assignment.
         function_obj = getattr(item, "function", None)
         if function_obj:
             mapped_names.update(function_obj.__dict__)
 
-        # Add the markers to the keywords as we no longer handle them correctly.
-        mapped_names.update(mark.name for mark in item.iter_markers())
+        # Add marker names and extra keywords in a single update call
+        marker_names = (mark.name for mark in item.iter_markers())
+        mapped_names.update(extra_keywords)
+        mapped_names.update(marker_names)
 
         return cls(mapped_names)
 
@@ -200,11 +205,13 @@ def deselect_by_keyword(items: "List[Item]", config: Config) -> None:
 
     remaining = []
     deselected = []
+    remaining_append = remaining.append
+    deselected_append = deselected.append
     for colitem in items:
         if not expr.evaluate(KeywordMatcher.from_item(colitem)):
-            deselected.append(colitem)
+            deselected_append(colitem)
         else:
-            remaining.append(colitem)
+            remaining_append(colitem)
 
     if deselected:
         config.hook.pytest_deselected(items=deselected)
