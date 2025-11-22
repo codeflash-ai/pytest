@@ -199,8 +199,8 @@ class TracebackEntry:
         rawentry: TracebackType,
         repr_style: Optional['Literal["short", "long"]'] = None,
     ) -> None:
-        self._rawentry: "Final" = rawentry
-        self._repr_style: "Final" = repr_style
+        self._rawentry: Final = rawentry
+        self._repr_style: Final = repr_style
 
     def with_repr_style(
         self, repr_style: Optional['Literal["short", "long"]']
@@ -545,33 +545,33 @@ class ExceptionInfo(Generic[E]):
     @property
     def type(self) -> Type[E]:
         """The exception class."""
-        assert (
-            self._excinfo is not None
-        ), ".type can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".type can only be used after the context manager exits"
+        )
         return self._excinfo[0]
 
     @property
     def value(self) -> E:
         """The exception value."""
-        assert (
-            self._excinfo is not None
-        ), ".value can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".value can only be used after the context manager exits"
+        )
         return self._excinfo[1]
 
     @property
     def tb(self) -> TracebackType:
         """The exception raw traceback."""
-        assert (
-            self._excinfo is not None
-        ), ".tb can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".tb can only be used after the context manager exits"
+        )
         return self._excinfo[2]
 
     @property
     def typename(self) -> str:
         """The type name of the exception."""
-        assert (
-            self._excinfo is not None
-        ), ".typename can only be used after the context manager exits"
+        assert self._excinfo is not None, (
+            ".typename can only be used after the context manager exits"
+        )
         return self.type.__name__
 
     @property
@@ -853,22 +853,45 @@ class FormattedExcinfo:
     ) -> List[str]:
         """Return formatted and marked up source lines."""
         lines = []
-        if source is not None and line_index < 0:
-            line_index += len(source)
-        if source is None or line_index >= len(source.lines) or line_index < 0:
+        # Fast exit if source is None or line_index is out of bounds
+        orig_source = source  # to avoid recomputation
+        source_lines = None
+        source_len = 0
+
+        if source is not None:
+            source_lines = source.lines
+            source_len = len(source_lines)
+            if line_index < 0:
+                line_index += source_len
+
+        if (
+            source is None
+            or source_lines is None
+            or line_index >= source_len
+            or line_index < 0
+        ):
             # `line_index` could still be outside `range(len(source.lines))` if
             # we're processing AST with pathological position attributes.
             source = Source("???")
+            source_lines = source.lines
+            source_len = 1
             line_index = 0
         space_prefix = "    "
         if short:
-            lines.append(space_prefix + source.lines[line_index].strip())
+            # .strip() is important; avoid extra variable
+            lines.append(space_prefix + source_lines[line_index].strip())
         else:
-            for line in source.lines[:line_index]:
-                lines.append(space_prefix + line)
-            lines.append(self.flow_marker + "   " + source.lines[line_index])
-            for line in source.lines[line_index + 1 :]:
-                lines.append(space_prefix + line)
+            # Avoid loop iteration where possible: use slice assignment to improve iteration speed
+            if line_index > 0:
+                # use list comprehension for faster appending
+                lines.extend(
+                    [space_prefix + line for line in source_lines[:line_index]]
+                )
+            lines.append(self.flow_marker + "   " + source_lines[line_index])
+            if line_index + 1 < source_len:
+                lines.extend(
+                    [space_prefix + line for line in source_lines[line_index + 1 :]]
+                )
         if excinfo is not None:
             indent = 4 if short else self._getindent(source)
             lines.extend(self.get_exconly(excinfo, indent=indent, markall=True))
@@ -942,7 +965,7 @@ class FormattedExcinfo:
             if short:
                 message = "in %s" % (entry.name)
             else:
-                message = excinfo and excinfo.typename or ""
+                message = (excinfo and excinfo.typename) or ""
             entry_path = entry.path
             path = self._makepath(entry_path)
             reprfileloc = ReprFileLocation(path, entry.lineno + 1, message)
@@ -1177,10 +1200,8 @@ class ReprTraceback(TerminalRepr):
             entry.toterminal(tw)
             if i < len(self.reprentries) - 1:
                 next_entry = self.reprentries[i + 1]
-                if (
-                    entry.style == "long"
-                    or entry.style == "short"
-                    and next_entry.style == "long"
+                if entry.style == "long" or (
+                    entry.style == "short" and next_entry.style == "long"
                 ):
                     tw.sep(self.entrysep)
 
@@ -1358,7 +1379,7 @@ def getfslineno(obj: object) -> Tuple[Union[str, Path], int]:
         except TypeError:
             return "", -1
 
-        fspath = fn and absolutepath(fn) or ""
+        fspath = (fn and absolutepath(fn)) or ""
         lineno = -1
         if fspath:
             try:
