@@ -456,7 +456,8 @@ def mangle_test_address(address: str) -> List[str]:
     names = path.split("::")
     # Convert file path to dotted path.
     names[0] = names[0].replace(nodes.SEP, ".")
-    names[0] = re.sub(r"\.py$", "", names[0])
+    if names[0].endswith(".py"):
+        names[0] = names[0][:-3]
     # Put any params back.
     names[-1] += possible_open_bracket + params
     return names
