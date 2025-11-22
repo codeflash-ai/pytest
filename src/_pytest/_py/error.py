@@ -20,13 +20,17 @@ R = TypeVar("R")
 
 class Error(EnvironmentError):
     def __repr__(self) -> str:
-        return "{}.{} {!r}: {} ".format(
-            self.__class__.__module__,
-            self.__class__.__name__,
-            self.__class__.__doc__,
-            " ".join(map(str, self.args)),
-            # repr(self.args)
-        )
+        cls = self.__class__
+        # Use a generator expression for joining, avoid unnecessary map call
+        # List comprehension is slightly faster here because str is a built-in and we know self.args is a tuple
+        # Avoid module/name/doc lookup repetition
+        args = self.args
+        if args:
+            # Slight speedup using list comprehension instead of map for built-in str
+            args_str = " ".join([str(arg) for arg in args])
+        else:
+            args_str = ""
+        return f"{cls.__module__}.{cls.__name__} {cls.__doc__!r}: {args_str} "
 
     def __str__(self) -> str:
         s = "[{}]: {}".format(
