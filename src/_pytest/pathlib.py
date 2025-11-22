@@ -357,7 +357,9 @@ def cleanup_candidates(root: Path, prefix: str, keep: int) -> Iterator[Path]:
 def cleanup_dead_symlinks(root: Path):
     for left_dir in root.iterdir():
         if left_dir.is_symlink():
-            if not left_dir.resolve().exists():
+            try:
+                left_dir.stat()
+            except FileNotFoundError:
                 left_dir.unlink()
 
 
